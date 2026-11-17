@@ -1,4 +1,5 @@
 import { DeviceCard } from '../components/DeviceCard';
+import { HomeFloorPlan } from '../components/HomeFloorPlan';
 import { ActuatorDevice, BaseDevice } from '../model/DeviceModels';
 import { DeviceDetailParam, ROUTE_DEVICE_DETAIL } from '../model/NavTypes';
 import { RoomId, RoomInfo, ScenePreset } from '../model/Types';
@@ -142,6 +143,23 @@ export struct DashboardView {
           colors: [['#1677FF', 0.0], ['#2F54EB', 1.0]]
         })
         .shadow({ radius: 12, color: '#241677FF', offsetX: 0, offsetY: 4 })
+
+        // 2.5 全屋数字孪生交互沙盘
+        HomeFloorPlan({
+          revision: this.revision,
+          onSelectDevice: (id: string) => {
+            this.openDeviceDetail(id);
+          },
+          onToggleActuator: (id: string) => {
+            const ok = this.store.toggleActuatorPower(id);
+            const dev = this.store.getDeviceById(id);
+            if (!ok) {
+              this.showTip('设备离线或不可控，操作已拦截');
+            } else if (dev) {
+              this.showTip(`${dev.name}：${dev.getSummaryText()}`);
+            }
+          }
+        })
 
         // 3. 突发工况演练快捷栏
         Column({ space: 8 }) {

@@ -56,7 +56,8 @@ entry/src/
 │   │   └── SmartHomeStore.ets              # 全局响应式状态协调中心与内置 Mock 自检
 │   ├── components/
 │   │   ├── DeviceCard.ets                  # 自定义设备卡片组件
-│   │   └── EnvironmentChart.ets            # Canvas 环境趋势折线图组件
+│   │   ├── EnvironmentChart.ets            # Canvas 环境趋势折线图组件
+│   │   └── HomeFloorPlan.ets               # 全屋数字孪生交互式户型沙盘组件
 │   ├── view/
 │   │   ├── DashboardView.ets               # 智居看板页
 │   │   ├── RulesView.ets                   # 规则编排页
