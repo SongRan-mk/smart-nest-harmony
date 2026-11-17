@@ -278,6 +278,11 @@ export class SmartHomeStore {
     return this.restoredFromDisk ? '已从本地持久化恢复' : '本地首选项已同步';
   }
 
+  public getCurrentVirtualTimeText(): string {
+    const virtualHour = (8 + Math.max(0, this.simConfig.tickIndex - 1) * 2) % 24;
+    return `${virtualHour.toString().padStart(2, '0')}:00`;
+  }
+
   /**
    * 切换执行器开关
    */
@@ -390,10 +395,24 @@ export class SmartHomeStore {
       }
     }
     this.activeSceneId = targetScene.id;
+
+    // 同步人员在位传感状态：离家布防设为无人(0)，回家/睡眠设为有人(1)
+    let motionHint = '';
+    const motionSensor = this.getDeviceById('sensor_bedroom_motion');
+    if (motionSensor instanceof SensorDevice && motionSensor.online) {
+      if (targetScene.id === 'scene_away') {
+        motionSensor.updateReading(0);
+        motionHint = '，人体红外已同步为无人';
+      } else if (targetScene.id === 'scene_home' || targetScene.id === 'scene_sleep') {
+        motionSensor.updateReading(1);
+        motionHint = '，人体红外已同步为有人';
+      }
+    }
+
     this.appendLog(
       LogSource.SCENE,
       `切换场景 · ${targetScene.name}`,
-      `成功联动 ${okCount} 台设备${failCount > 0 ? `，${failCount} 台离线跳过` : ''}`
+      `成功联动 ${okCount} 台设备${failCount > 0 ? `，${failCount} 台离线跳过` : ''}${motionHint}`
     );
     this.recordLiveSnapshot(formatTimestamp(Date.now()));
     this.notifyChanged();

@@ -17,7 +17,7 @@ export class SimulationEngine {
    * 推进一个仿真时间步长，计算执行器对环境的真实反馈
    */
   public static stepEnvironment(devices: BaseDevice[], tickIndex: number): SimStepResult {
-    const virtualHour = (8 + tickIndex * 2) % 24;
+    const virtualHour = (8 + Math.max(0, tickIndex - 1) * 2) % 24;
     const timeLabel = `${virtualHour.toString().padStart(2, '0')}:00`;
 
     const tempSensor = SimulationEngine.findSensorByMetric(devices, MetricKey.TEMPERATURE);

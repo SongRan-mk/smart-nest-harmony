@@ -125,7 +125,7 @@ export struct HomeFloorPlan {
 
         Blank()
 
-        Text(this.isDarkAmbient() ? '夜间弱光环境' : '日间采光环境')
+        Text(`${this.store.getCurrentVirtualTimeText()} · ${this.isDarkAmbient() ? '夜间弱光' : '日间采光'}`)
           .fontSize(11)
           .fontWeight(FontWeight.Medium)
           .fontColor(this.isDarkAmbient() ? '#FDE68A' : '#1677FF')
@@ -320,7 +320,9 @@ export struct HomeFloorPlan {
 
             // 声光报警器节点
             Row({ space: 4 }) {
-              Text(this.isActuatorOn('act_balcony_siren') ? '🚨 鸣笛告警' : '🔔 报警待机')
+              Text(!this.isActuatorOnline('act_balcony_siren')
+                ? '报警器离线'
+                : (this.isActuatorOn('act_balcony_siren') ? '🚨 鸣笛告警' : '🔔 报警待机'))
                 .fontSize(11)
                 .fontWeight(FontWeight.Bold)
                 .fontColor(this.isActuatorOn('act_balcony_siren') ? '#FFFFFF' : '#4E5969')
@@ -378,13 +380,17 @@ export struct HomeFloorPlan {
             Row({ space: 6 }) {
               // 卧室氛围灯
               Column({ space: 2 }) {
-                Text(this.isActuatorOn('act_bedroom_light') ? '💡 暖光' : '○ 关灯')
+                Text(!this.isActuatorOnline('act_bedroom_light')
+                  ? '离线'
+                  : (this.isActuatorOn('act_bedroom_light') ? '💡 暖光' : '○ 关灯'))
                   .fontSize(11)
                   .fontWeight(FontWeight.Bold)
                   .fontColor(this.isActuatorOn('act_bedroom_light') ? '#D48806' : '#64748B')
-                Text(this.isActuatorOn('act_bedroom_light')
-                  ? `${this.getActuatorLevel('act_bedroom_light', 40)}%`
-                  : '氛围灯')
+                Text(!this.isActuatorOnline('act_bedroom_light')
+                  ? '氛围灯'
+                  : (this.isActuatorOn('act_bedroom_light')
+                    ? `${this.getActuatorLevel('act_bedroom_light', 40)}%`
+                    : '氛围灯'))
                   .fontSize(10)
                   .fontColor('#64748B')
               }
@@ -398,13 +404,17 @@ export struct HomeFloorPlan {
 
               // 空气净化器
               Column({ space: 2 }) {
-                Text(this.isActuatorOn('act_bedroom_purifier') ? '🌀 净化' : '净化器')
+                Text(!this.isActuatorOnline('act_bedroom_purifier')
+                  ? '离线'
+                  : (this.isActuatorOn('act_bedroom_purifier') ? '🌀 净化' : '净化器'))
                   .fontSize(11)
                   .fontWeight(FontWeight.Bold)
                   .fontColor(this.isActuatorOn('act_bedroom_purifier') ? '#FFFFFF' : '#64748B')
-                Text(this.isActuatorOn('act_bedroom_purifier')
-                  ? `${this.getActuatorLevel('act_bedroom_purifier', 50)}%`
-                  : '待机')
+                Text(!this.isActuatorOnline('act_bedroom_purifier')
+                  ? '不可用'
+                  : (this.isActuatorOn('act_bedroom_purifier')
+                    ? `${this.getActuatorLevel('act_bedroom_purifier', 50)}%`
+                    : '待机'))
                   .fontSize(10)
                   .fontColor(this.isActuatorOn('act_bedroom_purifier') ? '#D1FAE5' : '#64748B')
               }
@@ -441,13 +451,17 @@ export struct HomeFloorPlan {
             Row({ space: 6 }) {
               // 书房护眼台灯
               Column({ space: 2 }) {
-                Text(this.isActuatorOn('act_study_lamp') ? '💡 台灯' : '○ 关灯')
+                Text(!this.isActuatorOnline('act_study_lamp')
+                  ? '离线'
+                  : (this.isActuatorOn('act_study_lamp') ? '💡 台灯' : '○ 关灯'))
                   .fontSize(11)
                   .fontWeight(FontWeight.Bold)
                   .fontColor(this.isActuatorOn('act_study_lamp') ? '#D48806' : '#64748B')
-                Text(this.isActuatorOn('act_study_lamp')
-                  ? `${this.getActuatorLevel('act_study_lamp', 85)}%`
-                  : '待机')
+                Text(!this.isActuatorOnline('act_study_lamp')
+                  ? '不可用'
+                  : (this.isActuatorOn('act_study_lamp')
+                    ? `${this.getActuatorLevel('act_study_lamp', 85)}%`
+                    : '待机'))
                   .fontSize(10)
                   .fontColor('#64748B')
               }
@@ -461,18 +475,22 @@ export struct HomeFloorPlan {
 
               // 入户智能门锁
               Column({ space: 2 }) {
-                Text(this.isActuatorOn('act_entry_lock') ? '🔒 已锁' : '🔓 未锁')
+                Text(!this.isActuatorOnline('act_entry_lock')
+                  ? '门锁离线'
+                  : (this.isActuatorOn('act_entry_lock') ? '🔒 已锁' : '🔓 未锁'))
                   .fontSize(11)
                   .fontWeight(FontWeight.Bold)
-                  .fontColor('#FFFFFF')
+                  .fontColor(!this.isActuatorOnline('act_entry_lock') ? '#4E5969' : '#FFFFFF')
                 Text('入户门锁')
                   .fontSize(10)
-                  .fontColor('#F1F5F9')
+                  .fontColor(!this.isActuatorOnline('act_entry_lock') ? '#64748B' : '#F1F5F9')
               }
               .layoutWeight(1)
               .padding({ top: 7, bottom: 7 })
               .borderRadius(10)
-              .backgroundColor(this.isActuatorOn('act_entry_lock') ? '#00B578' : '#FA8C16')
+              .backgroundColor(!this.isActuatorOnline('act_entry_lock')
+                ? '#E2E8F0'
+                : (this.isActuatorOn('act_entry_lock') ? '#00B578' : '#FA8C16'))
               .onClick(() => {
                 this.onToggleActuator('act_entry_lock');
               })

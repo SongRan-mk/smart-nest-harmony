@@ -127,6 +127,17 @@ export struct RuleEditorPage {
     }
   }
 
+  private getSensorHint(deviceId: string): string {
+    const dev = this.store.getDeviceById(deviceId);
+    if (dev instanceof SensorDevice) {
+      if (dev.metricKey === MetricKey.MOTION_DETECTED) {
+        return `当前：${dev.getPrimaryValueText()} · 提示：0 表示无人，1 表示有人活动`;
+      }
+      return `当前读数：${dev.value}${dev.unit} · 有效量程：${dev.minVal}~${dev.maxVal}${dev.unit}`;
+    }
+    return '';
+  }
+
   private addCondition(): void {
     const sensors = this.store.getSensors();
     const firstSensor = sensors.length > 0 ? sensors[0] : undefined;
@@ -451,6 +462,13 @@ export struct RuleEditorPage {
                 .scrollable(ScrollDirection.Horizontal)
                 .scrollBar(BarState.Off)
                 .width('100%')
+
+                if (this.getSensorHint(cond.deviceId).length > 0) {
+                  Text(this.getSensorHint(cond.deviceId))
+                    .fontSize(11)
+                    .fontColor('#1677FF')
+                    .width('100%')
+                }
 
                 Row({ space: 6 }) {
                   ForEach(this.operators, (op: ConditionOperator) => {
