@@ -8,7 +8,8 @@ import {
   LogicOperator,
   LogSource,
   RuleAction,
-  RuleCondition
+  RuleCondition,
+  RulePriority
 } from '../model/Types';
 
 export interface ConditionEvalResult {
@@ -23,6 +24,7 @@ export interface ActionExecResult {
   deviceId: string;
   deviceName: string;
   success: boolean;
+  conflictSkipped?: boolean;
   reason: string;
 }
 
@@ -39,6 +41,7 @@ export interface EngineCycleSummary {
   evaluatedCount: number;
   triggeredCount: number;
   executedActionCount: number;
+  conflictSkippedCount: number;
   errorCount: number;
   results: RuleEvalResult[];
   generatedLogs: ExecutionLog[];
@@ -142,13 +145,21 @@ export class RuleEngine {
   }
 
   /**
-   * 评估整条规则（含启用状态、异常条件、AND/OR 组合、冷却防抖与动作执行）
+   * 获取规则有效优先级（缺省回退为常规级）
+   */
+  public static getEffectivePriority(rule: AutomationRule): number {
+    return rule.priority !== undefined ? rule.priority : RulePriority.NORMAL;
+  }
+
+  /**
+   * 评估整条规则（含启用状态、异常条件、AND/OR 组合、冷却防抖、冲突仲裁与动作执行）
    */
   public static evaluateRule(
     rule: AutomationRule,
     devices: BaseDevice[],
     nowMs: number,
-    ignoreCooldown: boolean = false
+    ignoreCooldown: boolean = false,
+    lockedDeviceOwners?: Map<string, string>
   ): RuleEvalResult {
     if (!rule.enabled) {
       return {
@@ -211,22 +222,31 @@ export class RuleEngine {
     }
 
     if (!allMatched) {
+      let failedDetail = '条件组合未命中';
+      for (let i = 0; i < conditionResults.length; i++) {
+        if (!conditionResults[i].matched) {
+          failedDetail = conditionResults[i].reason;
+          break;
+        }
+      }
       return {
         ruleId: rule.id,
         ruleName: rule.name,
         triggered: false,
-        skippedReason: '条件组合未命中',
+        skippedReason: failedDetail,
         conditionResults: conditionResults,
         actionResults: []
       };
     }
 
-    const actionResults = RuleEngine.executeActions(rule.actions, devices);
+    const actionResults = RuleEngine.executeActions(rule.actions, devices, lockedDeviceOwners, rule.name);
     let hasSuccess = false;
+    let hasConflictOnly = false;
     for (let i = 0; i < actionResults.length; i++) {
       if (actionResults[i].success) {
         hasSuccess = true;
-        break;
+      } else if (actionResults[i].conflictSkipped) {
+        hasConflictOnly = true;
       }
     }
 
@@ -239,18 +259,20 @@ export class RuleEngine {
       ruleId: rule.id,
       ruleName: rule.name,
       triggered: hasSuccess,
-      skippedReason: hasSuccess ? '' : '所有联动动作均执行失败',
+      skippedReason: hasSuccess ? '' : (hasConflictOnly ? '动作被高优先级规则冲突仲裁避让' : '所有联动动作均执行失败'),
       conditionResults: conditionResults,
       actionResults: actionResults
     };
   }
 
   /**
-   * 执行动作集合并返回逐条结果
+   * 执行动作集合并返回逐条结果（支持同周期高优先级执行器锁定仲裁）
    */
   public static executeActions(
     actions: RuleAction[],
-    devices: BaseDevice[]
+    devices: BaseDevice[],
+    lockedDeviceOwners?: Map<string, string>,
+    ownerRuleName: string = ''
   ): ActionExecResult[] {
     const results: ActionExecResult[] = [];
     for (let i = 0; i < actions.length; i++) {
@@ -289,12 +311,30 @@ export class RuleEngine {
         continue;
       }
 
+      // 同周期高优先级冲突仲裁：若设备已被高优先级规则锁定，则低优先级动作安全避让
+      if (lockedDeviceOwners && lockedDeviceOwners.has(device.id)) {
+        const winner = lockedDeviceOwners.get(device.id) || '高优先级规则';
+        results.push({
+          actionId: action.id,
+          deviceId: device.id,
+          deviceName: device.name,
+          success: false,
+          conflictSkipped: true,
+          reason: `冲突仲裁避让：${device.name}已被高优先级规则【${winner}】锁定`
+        });
+        continue;
+      }
+
       device.setPower(action.targetPowerOn);
       if (action.targetLevel !== undefined && !Number.isNaN(action.targetLevel)) {
         device.setLevel(action.targetLevel);
       }
       if (action.targetMode !== undefined && action.targetMode.trim().length > 0) {
         device.setMode(action.targetMode);
+      }
+
+      if (lockedDeviceOwners && ownerRuleName.length > 0) {
+        lockedDeviceOwners.set(device.id, ownerRuleName);
       }
 
       results.push({
@@ -309,7 +349,7 @@ export class RuleEngine {
   }
 
   /**
-   * 扫描并执行全量规则周期
+   * 按优先级降序扫描并执行全量规则周期（支持同周期设备冲突仲裁）
    */
   public static runCycle(
     rules: AutomationRule[],
@@ -317,15 +357,21 @@ export class RuleEngine {
     nowMs: number,
     ignoreCooldown: boolean = false
   ): EngineCycleSummary {
+    const orderedRules = rules.slice().sort((a: AutomationRule, b: AutomationRule) => {
+      return RuleEngine.getEffectivePriority(b) - RuleEngine.getEffectivePriority(a);
+    });
+    const lockedDeviceOwners: Map<string, string> = new Map<string, string>();
+
     const results: RuleEvalResult[] = [];
     const generatedLogs: ExecutionLog[] = [];
     let triggeredCount = 0;
     let executedActionCount = 0;
+    let conflictSkippedCount = 0;
     let errorCount = 0;
 
-    for (let i = 0; i < rules.length; i++) {
-      const rule = rules[i];
-      const evalRes = RuleEngine.evaluateRule(rule, devices, nowMs, ignoreCooldown);
+    for (let i = 0; i < orderedRules.length; i++) {
+      const rule = orderedRules[i];
+      const evalRes = RuleEngine.evaluateRule(rule, devices, nowMs, ignoreCooldown, lockedDeviceOwners);
       results.push(evalRes);
 
       if (evalRes.triggered) {
@@ -336,6 +382,17 @@ export class RuleEngine {
           if (ar.success) {
             executedActionCount += 1;
             successDesc.push(ar.reason);
+          } else if (ar.conflictSkipped) {
+            conflictSkippedCount += 1;
+            generatedLogs.push({
+              id: `log_arb_${nowMs}_${i}_${j}`,
+              timestamp: nowMs,
+              timeText: formatTimestamp(nowMs),
+              source: LogSource.SIMULATION,
+              title: `冲突仲裁避让 · ${rule.name}`,
+              detail: ar.reason,
+              ruleId: rule.id
+            });
           } else {
             errorCount += 1;
             generatedLogs.push({
@@ -362,10 +419,21 @@ export class RuleEngine {
           });
         }
       } else if (evalRes.actionResults.length > 0) {
-        // 满足条件但全部动作执行失败的场景
+        // 满足条件但动作全部失败或全部被冲突仲裁避让
         for (let j = 0; j < evalRes.actionResults.length; j++) {
           const ar = evalRes.actionResults[j];
-          if (!ar.success) {
+          if (ar.conflictSkipped) {
+            conflictSkippedCount += 1;
+            generatedLogs.push({
+              id: `log_arb_${nowMs}_${i}_${j}`,
+              timestamp: nowMs,
+              timeText: formatTimestamp(nowMs),
+              source: LogSource.SIMULATION,
+              title: `冲突仲裁避让 · ${rule.name}`,
+              detail: ar.reason,
+              ruleId: rule.id
+            });
+          } else if (!ar.success) {
             errorCount += 1;
             generatedLogs.push({
               id: `log_err_${nowMs}_${i}_${j}`,
@@ -385,6 +453,7 @@ export class RuleEngine {
       evaluatedCount: rules.length,
       triggeredCount: triggeredCount,
       executedActionCount: executedActionCount,
+      conflictSkippedCount: conflictSkippedCount,
       errorCount: errorCount,
       results: results,
       generatedLogs: generatedLogs

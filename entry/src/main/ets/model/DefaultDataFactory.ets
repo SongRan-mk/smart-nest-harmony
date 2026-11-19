@@ -11,6 +11,7 @@ import {
   MetricKey,
   RoomId,
   RoomInfo,
+  RulePriority,
   ScenePreset,
   SimConfig
 } from './Types';
@@ -217,6 +218,7 @@ export class DefaultDataFactory {
         name: '高温自动开启制冷',
         description: '当客厅温度高于 28℃ 时，自动开启空调制冷至 24℃ 并适当合拢窗帘',
         enabled: true,
+        priority: RulePriority.NORMAL,
         logic: LogicOperator.AND,
         conditions: [
           {
@@ -252,6 +254,7 @@ export class DefaultDataFactory {
         name: '暗光有人自动照明',
         description: '当室内光照低于 150lux 且卧室监测到人员活动时，自动开启客厅主灯与卧室氛围灯',
         enabled: true,
+        priority: RulePriority.NORMAL,
         logic: LogicOperator.AND,
         conditions: [
           {
@@ -294,6 +297,7 @@ export class DefaultDataFactory {
         name: '烟雾超标应急防护',
         description: '当阳台烟雾浓度 >= 120ppm 时，立即拉响报警器、全开净化器并开启窗帘通风',
         enabled: true,
+        priority: RulePriority.EMERGENCY,
         logic: LogicOperator.OR,
         conditions: [
           {
@@ -335,6 +339,7 @@ export class DefaultDataFactory {
         name: '凉爽时段节能待机',
         description: '当客厅温度 <= 22℃ 时自动关闭客厅空调进入节能模式',
         enabled: false,
+        priority: RulePriority.LOW,
         logic: LogicOperator.AND,
         conditions: [
           {

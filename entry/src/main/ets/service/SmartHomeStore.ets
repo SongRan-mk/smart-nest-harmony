@@ -14,6 +14,7 @@ import {
   PersistedAppState,
   RoomId,
   RoomInfo,
+  RulePriority,
   ScenePreset,
   SerializedDeviceState,
   SimConfig
@@ -327,6 +328,57 @@ export class SmartHomeStore {
     this.notifyChanged();
     this.persistAsync();
     return true;
+  }
+
+  /**
+   * 切换执行器运行模式（如制冷/除湿/暖白/静音）
+   */
+  public setActuatorMode(deviceId: string, modeText: string): boolean {
+    const dev = this.getDeviceById(deviceId);
+    if (!(dev instanceof ActuatorDevice)) {
+      return false;
+    }
+    if (!dev.online) {
+      this.appendLog(LogSource.ERROR, `模式切换拦截 · ${dev.name}`, '设备当前处于离线状态，拒绝切换运行模式');
+      this.notifyChanged();
+      this.persistAsync();
+      return false;
+    }
+    dev.setMode(modeText);
+    this.appendLog(LogSource.MANUAL, `模式切换 · ${dev.name}`, `运行模式已切换为【${dev.modeText}】`);
+    this.notifyChanged();
+    this.persistAsync();
+    return true;
+  }
+
+  /**
+   * 一键应急解除告警：关闭鸣笛报警并将异常烟雾/极端高温复位至安全水平
+   */
+  public dismissAllAlerts(): string {
+    const siren = this.getDeviceById('act_balcony_siren');
+    if (siren instanceof ActuatorDevice && siren.online) {
+      siren.setPower(false);
+      siren.setMode('待机警戒');
+    }
+    const smoke = this.getDeviceById('sensor_balcony_smoke');
+    if (smoke instanceof SensorDevice && smoke.online && smoke.value >= smoke.alertThreshold) {
+      smoke.updateReading(18);
+    }
+    const temp = this.getDeviceById('sensor_living_temp');
+    if (temp instanceof SensorDevice && temp.online && temp.value >= temp.alertThreshold) {
+      temp.updateReading(25.5);
+    }
+    const purifier = this.getDeviceById('act_bedroom_purifier');
+    if (purifier instanceof ActuatorDevice && purifier.online) {
+      purifier.setLevel(45);
+      purifier.setMode('静音除味');
+    }
+    this.activeSceneId = 'scene_reset';
+    this.appendLog(LogSource.SCENE, '应急解除告警', '已关闭声光报警器并将异常环境数值恢复至安全区间');
+    this.recordLiveSnapshot(formatTimestamp(Date.now()));
+    this.notifyChanged();
+    this.persistAsync();
+    return '全部告警已安全解除，环境恢复正常';
   }
 
   /**
@@ -698,6 +750,50 @@ export class SmartHomeStore {
       passed: corruptedRes === undefined
     });
 
+    // 5. 边界/算法用例：高优先级应急规则与常规规则同周期冲突仲裁
+    const mTemp = new SensorDevice(
+      'm_temp', 'Mock温度', RoomId.LIVING_ROOM, DeviceKind.TEMPERATURE_SENSOR,
+      MetricKey.TEMPERATURE, 31.5, '℃', 0, 55, 30
+    );
+    const mSmoke = new SensorDevice(
+      'm_smoke', 'Mock烟雾', RoomId.BALCONY, DeviceKind.SMOKE_SENSOR,
+      MetricKey.SMOKE_LEVEL, 185, 'ppm', 0, 500, 120
+    );
+    const mCurtain = new ActuatorDevice(
+      'm_curtain', 'Mock窗帘', RoomId.LIVING_ROOM, DeviceKind.SMART_CURTAIN,
+      true, 60, 0, 100, '%', '开度', 35
+    );
+    const mAc = new ActuatorDevice(
+      'm_ac', 'Mock空调', RoomId.LIVING_ROOM, DeviceKind.AIR_CONDITIONER,
+      false, 26, 16, 30, '℃', '制冷', 1200
+    );
+    const lowHeatRule: AutomationRule = {
+      id: 'm_heat', name: '高温遮阳', description: '', enabled: true, priority: RulePriority.NORMAL,
+      logic: LogicOperator.AND,
+      conditions: [{ id: 'c_h', deviceId: 'm_temp', metricKey: MetricKey.TEMPERATURE, operator: ConditionOperator.GT, threshold: 28 }],
+      actions: [
+        { id: 'a_ac', deviceId: 'm_ac', targetPowerOn: true, targetLevel: 24 },
+        { id: 'a_curt_30', deviceId: 'm_curtain', targetPowerOn: true, targetLevel: 30 }
+      ],
+      cooldownMs: 0, lastTriggeredAt: 0, triggerCount: 0
+    };
+    const highSmokeRule: AutomationRule = {
+      id: 'm_emerg', name: '烟雾应急通风', description: '', enabled: true, priority: RulePriority.EMERGENCY,
+      logic: LogicOperator.OR,
+      conditions: [{ id: 'c_s', deviceId: 'm_smoke', metricKey: MetricKey.SMOKE_LEVEL, operator: ConditionOperator.GTE, threshold: 120 }],
+      actions: [{ id: 'a_curt_100', deviceId: 'm_curtain', targetPowerOn: true, targetLevel: 100 }],
+      cooldownMs: 0, lastTriggeredAt: 0, triggerCount: 0
+    };
+    const arbSummary = RuleEngine.runCycle([lowHeatRule, highSmokeRule], [mTemp, mSmoke, mCurtain, mAc], 30000);
+    items.push({
+      category: '边界',
+      name: '高优先级冲突仲裁锁定',
+      inputDesc: '高温31.5℃(窗帘30%)与烟雾185ppm(窗帘100%)并发',
+      expectedDesc: '应急优先锁定窗帘100%，高温窗帘避让且空调仍开24℃',
+      actualDesc: `curtain=${mCurtain.levelValue}%, ac=${mAc.powerOn ? mAc.levelValue : 0}℃, skipped=${arbSummary.conflictSkippedCount}`,
+      passed: mCurtain.levelValue === 100 && mAc.powerOn && mAc.levelValue === 24 && arbSummary.conflictSkippedCount === 1
+    });
+
     let passedCount = 0;
     for (let i = 0; i < items.length; i++) {
       if (items[i].passed) {
@@ -730,6 +826,22 @@ export class SmartHomeStore {
 
   public stopSimulationTimer(): void {
     this.stopTimerLoop();
+  }
+
+  /**
+   * 响应 UIAbility onBackground：挂起定时器节省系统资源，保留用户自动仿真意向
+   */
+  public pauseSimulationForBackground(): void {
+    this.stopTimerLoop();
+  }
+
+  /**
+   * 响应 UIAbility onForeground：若自动仿真处于开启状态则恢复周期步进
+   */
+  public resumeSimulationForForeground(): void {
+    if (this.initialized && this.simConfig.autoRunning) {
+      this.startTimerLoop();
+    }
   }
 
   private startTimerLoop(): void {

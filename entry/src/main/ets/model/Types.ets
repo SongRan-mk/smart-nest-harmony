@@ -52,6 +52,13 @@ export enum LogicOperator {
   OR = 'OR'
 }
 
+export enum RulePriority {
+  LOW = 1,
+  NORMAL = 2,
+  HIGH = 3,
+  EMERGENCY = 4
+}
+
 export enum LogSource {
   RULE = 'rule',
   MANUAL = 'manual',
@@ -97,6 +104,7 @@ export interface AutomationRule {
   name: string;
   description: string;
   enabled: boolean;
+  priority?: RulePriority;
   logic: LogicOperator;
   conditions: RuleCondition[];
   actions: RuleAction[];
@@ -177,6 +185,32 @@ export function getOperatorSymbol(op: ConditionOperator): string {
       return '!=';
     default:
       return '>';
+  }
+}
+
+export function getRulePriorityLabel(priority?: RulePriority): string {
+  switch (priority) {
+    case RulePriority.EMERGENCY:
+      return '紧急';
+    case RulePriority.HIGH:
+      return '高优';
+    case RulePriority.LOW:
+      return '节能';
+    default:
+      return '常规';
+  }
+}
+
+export function getRulePriorityColor(priority?: RulePriority): string {
+  switch (priority) {
+    case RulePriority.EMERGENCY:
+      return '#FF4D4F';
+    case RulePriority.HIGH:
+      return '#FA8C16';
+    case RulePriority.LOW:
+      return '#00B578';
+    default:
+      return '#1677FF';
   }
 }
 
