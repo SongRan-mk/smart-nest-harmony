@@ -6,7 +6,8 @@ import {
   DeviceKind,
   LogicOperator,
   MetricKey,
-  RoomId
+  RoomId,
+  RulePriority
 } from '../main/ets/model/Types';
 import { PersistenceService } from '../main/ets/service/PersistenceService';
 import { RuleEngine } from '../main/ets/service/RuleEngine';
@@ -220,6 +221,76 @@ export default function ruleEngineTest() {
         ''
       );
       expect(recovered === undefined).assertTrue();
+    });
+
+    // 10. 边界/算法用例：高优先级应急规则与常规规则并发冲突仲裁
+    it('boundary_priority_conflict_arbitration', 0, () => {
+      const temp = new SensorDevice(
+        's_temp', '客厅温度', RoomId.LIVING_ROOM, DeviceKind.TEMPERATURE_SENSOR,
+        MetricKey.TEMPERATURE, 31.5, '℃', 0, 55, 30
+      );
+      const smoke = new SensorDevice(
+        's_smoke', '阳台烟雾', RoomId.BALCONY, DeviceKind.SMOKE_SENSOR,
+        MetricKey.SMOKE_LEVEL, 185, 'ppm', 0, 500, 120
+      );
+      const curtain = new ActuatorDevice(
+        'a_curtain', '电动窗帘', RoomId.LIVING_ROOM, DeviceKind.SMART_CURTAIN,
+        true, 60, 0, 100, '%', '开度', 35
+      );
+      const ac = new ActuatorDevice(
+        'a_ac', '客厅空调', RoomId.LIVING_ROOM, DeviceKind.AIR_CONDITIONER,
+        false, 26, 16, 30, '℃', '制冷', 1200
+      );
+
+      // 常规优先级排在数组前面，验证引擎真实按 priority 降序排序而非数组顺序
+      const normalHeatRule: AutomationRule = {
+        id: 'r_heat', name: '高温遮阳', description: '', enabled: true, priority: RulePriority.NORMAL,
+        logic: LogicOperator.AND,
+        conditions: [{ id: 'c_h', deviceId: 's_temp', metricKey: MetricKey.TEMPERATURE, operator: ConditionOperator.GT, threshold: 28 }],
+        actions: [
+          { id: 'a_ac', deviceId: 'a_ac', targetPowerOn: true, targetLevel: 24 },
+          { id: 'a_curt_30', deviceId: 'a_curtain', targetPowerOn: true, targetLevel: 30, targetMode: '遮阳' }
+        ],
+        cooldownMs: 0, lastTriggeredAt: 0, triggerCount: 0
+      };
+      const emergencySmokeRule: AutomationRule = {
+        id: 'r_smoke', name: '烟雾应急通风', description: '', enabled: true, priority: RulePriority.EMERGENCY,
+        logic: LogicOperator.OR,
+        conditions: [{ id: 'c_s', deviceId: 's_smoke', metricKey: MetricKey.SMOKE_LEVEL, operator: ConditionOperator.GTE, threshold: 120 }],
+        actions: [
+          { id: 'a_curt_100', deviceId: 'a_curtain', targetPowerOn: true, targetLevel: 100, targetMode: '紧急通风' }
+        ],
+        cooldownMs: 0, lastTriggeredAt: 0, triggerCount: 0
+      };
+
+      const summary = RuleEngine.runCycle([normalHeatRule, emergencySmokeRule], [temp, smoke, curtain, ac], 30000);
+      expect(summary.triggeredCount).assertEqual(2);
+      expect(summary.conflictSkippedCount).assertEqual(1);
+      expect(curtain.levelValue).assertEqual(100);
+      expect(ac.powerOn).assertTrue();
+      expect(ac.levelValue).assertEqual(24);
+    });
+
+    // 11. 正常用例：!= (NEQ) 运算符求值验证
+    it('normal_neq_operator_evaluation', 0, () => {
+      const motion = new SensorDevice(
+        's_motion', '人体红外', RoomId.BEDROOM, DeviceKind.MOTION_SENSOR,
+        MetricKey.MOTION_DETECTED, 0, '', 0, 1, 2
+      );
+      const lamp = new ActuatorDevice(
+        'a_lamp', '卧室灯', RoomId.BEDROOM, DeviceKind.SMART_LIGHT,
+        true, 50, 10, 100, '%', '夜灯', 24
+      );
+      const neqRule: AutomationRule = {
+        id: 'r_neq', name: '无人自动关灯', description: '', enabled: true, priority: RulePriority.LOW,
+        logic: LogicOperator.AND,
+        conditions: [{ id: 'c_neq', deviceId: 's_motion', metricKey: MetricKey.MOTION_DETECTED, operator: ConditionOperator.NEQ, threshold: 1 }],
+        actions: [{ id: 'a_off', deviceId: 'a_lamp', targetPowerOn: false }],
+        cooldownMs: 0, lastTriggeredAt: 0, triggerCount: 0
+      };
+      const res = RuleEngine.evaluateRule(neqRule, [motion, lamp], 40000);
+      expect(res.triggered).assertTrue();
+      expect(lamp.powerOn).assertFalse();
     });
   });
 }

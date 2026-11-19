@@ -3,10 +3,13 @@ import {
   AutomationRule,
   ConditionOperator,
   getOperatorSymbol,
+  getRulePriorityColor,
+  getRulePriorityLabel,
   LogicOperator,
   MetricKey,
   RuleAction,
-  RuleCondition
+  RuleCondition,
+  RulePriority
 } from '../model/Types';
 import { SmartHomeStore } from '../service/SmartHomeStore';
 
@@ -23,6 +26,7 @@ interface EditableAction {
   deviceId: string;
   targetPowerOn: boolean;
   levelText: string;
+  targetMode?: string;
 }
 
 /**
@@ -36,6 +40,7 @@ export struct RuleEditorPage {
   @State ruleName: string = '';
   @State ruleDesc: string = '';
   @State logicOp: LogicOperator = LogicOperator.AND;
+  @State priority: RulePriority = RulePriority.NORMAL;
   @State cooldownSec: number = 8;
   @State ruleEnabled: boolean = true;
   @State conditions: EditableCondition[] = [];
@@ -47,7 +52,14 @@ export struct RuleEditorPage {
     ConditionOperator.GTE,
     ConditionOperator.LT,
     ConditionOperator.LTE,
-    ConditionOperator.EQ
+    ConditionOperator.EQ,
+    ConditionOperator.NEQ
+  ];
+  private priorities: RulePriority[] = [
+    RulePriority.LOW,
+    RulePriority.NORMAL,
+    RulePriority.HIGH,
+    RulePriority.EMERGENCY
   ];
   private existingLastTriggeredAt: number = 0;
   private existingTriggerCount: number = 0;
@@ -62,6 +74,7 @@ export struct RuleEditorPage {
         this.ruleName = existing.name;
         this.ruleDesc = existing.description;
         this.logicOp = existing.logic;
+        this.priority = existing.priority !== undefined ? existing.priority : RulePriority.NORMAL;
         this.cooldownSec = Math.round(existing.cooldownMs / 1000);
         this.ruleEnabled = existing.enabled;
         this.existingLastTriggeredAt = existing.lastTriggeredAt;
@@ -87,7 +100,8 @@ export struct RuleEditorPage {
             id: a.id,
             deviceId: a.deviceId,
             targetPowerOn: a.targetPowerOn,
-            levelText: a.targetLevel !== undefined ? `${a.targetLevel}` : ''
+            levelText: a.targetLevel !== undefined ? `${a.targetLevel}` : '',
+            targetMode: a.targetMode
           });
         }
         this.actions = clonedActs;
@@ -239,7 +253,8 @@ export struct RuleEditorPage {
       id: cur.id,
       deviceId: act.id,
       targetPowerOn: cur.targetPowerOn,
-      levelText: cur.levelText
+      levelText: cur.levelText,
+      targetMode: cur.targetMode
     };
     this.actions = next;
   }
@@ -251,7 +266,8 @@ export struct RuleEditorPage {
       id: cur.id,
       deviceId: cur.deviceId,
       targetPowerOn: powerOn,
-      levelText: cur.levelText
+      levelText: cur.levelText,
+      targetMode: cur.targetMode
     };
     this.actions = next;
   }
@@ -263,7 +279,8 @@ export struct RuleEditorPage {
       id: cur.id,
       deviceId: cur.deviceId,
       targetPowerOn: cur.targetPowerOn,
-      levelText: val
+      levelText: val,
+      targetMode: cur.targetMode
     };
     this.actions = next;
   }
@@ -302,7 +319,8 @@ export struct RuleEditorPage {
         id: a.id,
         deviceId: a.deviceId,
         targetPowerOn: a.targetPowerOn,
-        targetLevel: parsedLevel
+        targetLevel: parsedLevel,
+        targetMode: a.targetMode
       });
     }
 
@@ -311,6 +329,7 @@ export struct RuleEditorPage {
       name: this.ruleName.trim(),
       description: this.ruleDesc.trim(),
       enabled: this.ruleEnabled,
+      priority: this.priority,
       logic: this.logicOp,
       conditions: parsedConditions,
       actions: parsedActions,
@@ -379,6 +398,26 @@ export struct RuleEditorPage {
                 .onClick(() => {
                   this.logicOp = LogicOperator.OR;
                 })
+            }
+            .width('100%')
+
+            Row({ space: 8 }) {
+              Text('仲裁级别：')
+                .fontSize(13)
+                .fontColor('#4E5969')
+
+              ForEach(this.priorities, (p: RulePriority) => {
+                Text(getRulePriorityLabel(p))
+                  .fontSize(12)
+                  .fontWeight(this.priority === p ? FontWeight.Bold : FontWeight.Normal)
+                  .fontColor(this.priority === p ? '#FFFFFF' : '#4E5969')
+                  .backgroundColor(this.priority === p ? getRulePriorityColor(p) : '#F2F4F8')
+                  .padding({ left: 10, right: 10, top: 5, bottom: 5 })
+                  .borderRadius(12)
+                  .onClick(() => {
+                    this.priority = p;
+                  })
+              }, (p: RulePriority) => `${p}`)
             }
             .width('100%')
 
@@ -483,9 +522,16 @@ export struct RuleEditorPage {
                         this.updateConditionOp(index, op);
                       })
                   }, (op: ConditionOperator) => op)
+                }
+                .width('100%')
 
-                  TextInput({ placeholder: '阈值', text: cond.thresholdText })
-                    .height(32)
+                Row({ space: 8 }) {
+                  Text('触发阈值：')
+                    .fontSize(12)
+                    .fontColor('#4E5969')
+
+                  TextInput({ placeholder: '请输入数值阈值', text: cond.thresholdText })
+                    .height(34)
                     .fontSize(13)
                     .backgroundColor('#F5F7FA')
                     .borderRadius(8)

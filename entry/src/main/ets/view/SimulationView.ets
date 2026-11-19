@@ -55,6 +55,27 @@ export struct SimulationView {
     }
   }
 
+  private getEstimatedDailyKwh(): string {
+    const watts = this.store.getTotalWatts();
+    return ((watts * 24) / 1000).toFixed(2);
+  }
+
+  private getEstimatedDailyCost(): string {
+    const watts = this.store.getTotalWatts();
+    return (((watts * 24) / 1000) * 0.55).toFixed(2);
+  }
+
+  private getEcoSuggestion(): string {
+    const watts = this.store.getTotalWatts();
+    if (watts >= 1000) {
+      return '当前含大功率制冷负载，建议启用“凉爽时段节能待机”或调高空调设定 1~2℃';
+    }
+    if (watts >= 150) {
+      return '当前功耗中等，离家时建议使用“离家布防”模式一键降低待机耗电';
+    }
+    return '当前全屋处于绿色低功耗运行状态，节能表现优秀';
+  }
+
   build() {
     Scroll() {
       Column({ space: 14 }) {
@@ -162,6 +183,46 @@ export struct SimulationView {
               .fontColor('#00B578')
           }
           .width('100%')
+
+          // 日耗电量与电费估算卡片条
+          Column({ space: 6 }) {
+            Row() {
+              Column({ space: 2 }) {
+                Text('按当前负载估算日耗电')
+                  .fontSize(10)
+                  .fontColor('#6E7787')
+                Text(`${this.getEstimatedDailyKwh()} kWh`)
+                  .fontSize(15)
+                  .fontWeight(FontWeight.Bold)
+                  .fontColor('#1A2233')
+              }
+              .alignItems(HorizontalAlign.Start)
+              .layoutWeight(1)
+
+              Column({ space: 2 }) {
+                Text('预估日电费 (¥0.55/度)')
+                  .fontSize(10)
+                  .fontColor('#6E7787')
+                Text(`¥ ${this.getEstimatedDailyCost()}`)
+                  .fontSize(15)
+                  .fontWeight(FontWeight.Bold)
+                  .fontColor('#FA8C16')
+              }
+              .alignItems(HorizontalAlign.End)
+              .layoutWeight(1)
+            }
+            .width('100%')
+
+            Text(this.getEcoSuggestion())
+              .fontSize(11)
+              .fontColor('#00B578')
+              .width('100%')
+          }
+          .width('100%')
+          .padding(10)
+          .backgroundColor('#F6FFED')
+          .borderRadius(10)
+          .border({ width: 1, color: '#D9F7BE' })
 
           if (this.getActiveActuators().length === 0) {
             Text('当前所有执行器均处于待机状态（仅传感器基础微功耗运行）')

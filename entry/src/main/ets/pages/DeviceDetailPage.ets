@@ -1,5 +1,5 @@
 import { ActuatorDevice, BaseDevice, SensorDevice } from '../model/DeviceModels';
-import { getRoomDisplayName, MetricKey } from '../model/Types';
+import { DeviceKind, getRoomDisplayName, MetricKey } from '../model/Types';
 import { SmartHomeStore, STORE_REVISION_KEY } from '../service/SmartHomeStore';
 
 /**
@@ -65,6 +65,28 @@ export struct DeviceDetailPage {
       return 55;
     }
     return 0;
+  }
+
+  private supportsLevelSlider(dev: ActuatorDevice): boolean {
+    if (dev.kind === DeviceKind.SMART_LOCK || dev.kind === DeviceKind.ALARM_SIREN) {
+      return false;
+    }
+    return dev.maxLevel > dev.minLevel;
+  }
+
+  private getModePresets(kind: DeviceKind): string[] {
+    switch (kind) {
+      case DeviceKind.AIR_CONDITIONER:
+        return ['制冷', '强力制冷', '除湿', '睡眠静音', '节能待机'];
+      case DeviceKind.SMART_LIGHT:
+        return ['暖白光', '读写模式', '温馨照明', '夜灯柔光'];
+      case DeviceKind.SMART_CURTAIN:
+        return ['采光', '遮阳', '遮光', '紧急通风'];
+      case DeviceKind.AIR_PURIFIER:
+        return ['静音除味', '标准循环', '强效排烟'];
+      default:
+        return [];
+    }
   }
 
   build() {
@@ -174,9 +196,9 @@ export struct DeviceDetailPage {
                     .enabled(this.getDevice()!.online)
                     .onChange((val: number, mode: SliderChangeMode) => {
                       this.sliderDraft = val;
-                      if (mode === SliderChangeMode.Moving) {
+                      if (mode === SliderChangeMode.Begin || mode === SliderChangeMode.Moving) {
                         this.isDragging = true;
-                      } else {
+                      } else if (mode === SliderChangeMode.End || mode === SliderChangeMode.Click) {
                         this.isDragging = false;
                         const summary = this.store.updateSensorValue(this.deviceId, val);
                         this.showTip(`环境已更新 · 触发 ${summary.triggeredCount} 条规则`);
@@ -245,7 +267,7 @@ export struct DeviceDetailPage {
                 }
                 .width('100%')
 
-                if ((this.getDevice() as ActuatorDevice).maxLevel > (this.getDevice() as ActuatorDevice).minLevel) {
+                if (this.supportsLevelSlider(this.getDevice() as ActuatorDevice)) {
                   Divider().color('#F0F2F5')
                   Row() {
                     Text(`目标参数：${this.isDragging ? Math.round(this.sliderDraft) : (this.getDevice() as ActuatorDevice).levelValue}${(this.getDevice() as ActuatorDevice).unit}`)
@@ -270,14 +292,47 @@ export struct DeviceDetailPage {
                     .enabled(this.getDevice()!.online)
                     .onChange((val: number, mode: SliderChangeMode) => {
                       this.sliderDraft = val;
-                      if (mode === SliderChangeMode.Moving) {
+                      if (mode === SliderChangeMode.Begin || mode === SliderChangeMode.Moving) {
                         this.isDragging = true;
-                      } else {
+                      } else if (mode === SliderChangeMode.End || mode === SliderChangeMode.Click) {
                         this.isDragging = false;
                         this.store.setActuatorLevel(this.deviceId, val);
                         this.showTip(`参数已保存：${Math.round(val)}${(this.getDevice() as ActuatorDevice).unit}`);
                       }
                     })
+                }
+
+                if (this.getModePresets((this.getDevice() as ActuatorDevice).kind).length > 0) {
+                  Divider().color('#F0F2F5')
+                  Column({ space: 8 }) {
+                    Text('运行模式切换')
+                      .fontSize(13)
+                      .fontWeight(FontWeight.Medium)
+                      .fontColor('#4E5969')
+
+                    Scroll() {
+                      Row({ space: 8 }) {
+                        ForEach(this.getModePresets((this.getDevice() as ActuatorDevice).kind), (modeItem: string) => {
+                          Text(modeItem)
+                            .fontSize(12)
+                            .fontWeight((this.getDevice() as ActuatorDevice).modeText === modeItem ? FontWeight.Bold : FontWeight.Normal)
+                            .fontColor((this.getDevice() as ActuatorDevice).modeText === modeItem ? '#FFFFFF' : '#4E5969')
+                            .backgroundColor((this.getDevice() as ActuatorDevice).modeText === modeItem ? '#1677FF' : '#F2F4F8')
+                            .padding({ left: 12, right: 12, top: 6, bottom: 6 })
+                            .borderRadius(14)
+                            .onClick(() => {
+                              const ok = this.store.setActuatorMode(this.deviceId, modeItem);
+                              this.showTip(ok ? `已切换为【${modeItem}】` : '设备离线，模式切换被拦截');
+                            })
+                        }, (modeItem: string) => modeItem)
+                      }
+                    }
+                    .scrollable(ScrollDirection.Horizontal)
+                    .scrollBar(BarState.Off)
+                    .width('100%')
+                  }
+                  .width('100%')
+                  .alignItems(HorizontalAlign.Start)
                 }
               }
               .width('100%')

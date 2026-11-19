@@ -79,6 +79,38 @@ export struct DashboardView {
         .width('100%')
         .padding({ top: 6 })
 
+        // 1.5 紧急告警应急横幅（存在烟雾/高温/鸣笛告警时置顶提示）
+        if (this.store.getActiveAlertCount() > 0) {
+          Row({ space: 10 }) {
+            Column({ space: 2 }) {
+              Text(`检测到 ${this.store.getActiveAlertCount()} 项环境/安防异常告警`)
+                .fontSize(13)
+                .fontWeight(FontWeight.Bold)
+                .fontColor('#CF1322')
+              Text('已按应急优先策略执行联动，可点击右侧一键复位')
+                .fontSize(11)
+                .fontColor('#A8071A')
+            }
+            .alignItems(HorizontalAlign.Start)
+            .layoutWeight(1)
+
+            Button('一键解除')
+              .type(ButtonType.Capsule)
+              .height(30)
+              .fontSize(12)
+              .backgroundColor('#FF4D4F')
+              .fontColor('#FFFFFF')
+              .onClick(() => {
+                this.showTip(this.store.dismissAllAlerts());
+              })
+          }
+          .width('100%')
+          .padding(12)
+          .backgroundColor('#FFF1F0')
+          .borderRadius(14)
+          .border({ width: 1.5, color: '#FFA39E' })
+        }
+
         // 2. 全屋运行摘要卡
         Column({ space: 12 }) {
           Row() {

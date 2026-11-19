@@ -1,5 +1,12 @@
 import { ROUTE_RULE_EDITOR, RuleEditorParam } from '../model/NavTypes';
-import { AutomationRule, getOperatorSymbol, RuleAction, RuleCondition } from '../model/Types';
+import {
+  AutomationRule,
+  getOperatorSymbol,
+  getRulePriorityColor,
+  getRulePriorityLabel,
+  RuleAction,
+  RuleCondition
+} from '../model/Types';
 import { SmartHomeStore, STORE_REVISION_KEY } from '../service/SmartHomeStore';
 
 /**
@@ -58,6 +65,31 @@ export struct RulesView {
     this.pageStack.pushPathByName(ROUTE_RULE_EDITOR, param);
   }
 
+  private confirmDeleteRule(rule: AutomationRule): void {
+    try {
+      this.getUIContext().showAlertDialog({
+        title: '确认删除联动规则',
+        message: `确定删除规则「${rule.name}」吗？删除后将立即同步至本地持久化存储。`,
+        autoCancel: true,
+        primaryButton: {
+          value: '取消',
+          action: () => {}
+        },
+        secondaryButton: {
+          value: '确认删除',
+          fontColor: '#FF4D4F',
+          action: () => {
+            this.store.deleteRule(rule.id);
+            this.showTip(`已删除规则「${rule.name}」`);
+          }
+        }
+      });
+    } catch (_err) {
+      this.store.deleteRule(rule.id);
+      this.showTip(`已删除规则「${rule.name}」`);
+    }
+  }
+
   build() {
     Column({ space: 12 }) {
       // 顶部栏
@@ -96,6 +128,14 @@ export struct RulesView {
               // 标题行与启停开关
               Row() {
                 Row({ space: 6 }) {
+                  Text(getRulePriorityLabel(rule.priority))
+                    .fontSize(10)
+                    .fontWeight(FontWeight.Bold)
+                    .fontColor('#FFFFFF')
+                    .backgroundColor(getRulePriorityColor(rule.priority))
+                    .padding({ left: 6, right: 6, top: 2, bottom: 2 })
+                    .borderRadius(6)
+
                   Text(rule.logic)
                     .fontSize(11)
                     .fontWeight(FontWeight.Bold)
@@ -105,11 +145,12 @@ export struct RulesView {
                     .borderRadius(6)
 
                   Text(rule.name)
-                    .fontSize(16)
+                    .fontSize(15)
                     .fontWeight(FontWeight.Bold)
                     .fontColor('#1A2233')
                     .maxLines(1)
                     .textOverflow({ overflow: TextOverflow.Ellipsis })
+                    .layoutWeight(1)
                 }
                 .layoutWeight(1)
 
@@ -208,8 +249,7 @@ export struct RulesView {
                   .fontColor('#FF4D4F')
                   .backgroundColor('#FFF1F0')
                   .onClick(() => {
-                    this.store.deleteRule(rule.id);
-                    this.showTip(`已删除规则「${rule.name}」`);
+                    this.confirmDeleteRule(rule);
                   })
               }
               .width('100%')
