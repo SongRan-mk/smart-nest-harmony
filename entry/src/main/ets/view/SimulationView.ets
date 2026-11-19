@@ -13,9 +13,18 @@ interface MetricOption {
  */
 @Component
 export struct SimulationView {
-  @StorageProp(STORE_REVISION_KEY) revision: number = 0;
+  @StorageProp(STORE_REVISION_KEY) @Watch('syncFromStore') revision: number = 0;
   @State activeMetric: ChartMetricType = 'temperature';
   @State diagReport: MockDiagReport | undefined = undefined;
+
+  @State snapshots: EnvironmentSnapshot[] = [];
+  @State tickIndex: number = 4;
+  @State autoRunning: boolean = false;
+  @State totalWatts: number = 0;
+  @State dailyKwh: string = '0.00';
+  @State dailyCost: string = '0.00';
+  @State ecoSuggestion: string = '';
+  @State activeActuators: ActuatorDevice[] = [];
 
   private store: SmartHomeStore = SmartHomeStore.getInstance();
   private metricOptions: MetricOption[] = [
@@ -26,25 +35,35 @@ export struct SimulationView {
     { key: 'totalWatts', label: '功耗 W' }
   ];
 
-  private getSnapshots(): EnvironmentSnapshot[] {
-    if (this.revision < 0) {
-      return [];
-    }
-    return this.store.getSnapshots();
+  aboutToAppear(): void {
+    this.syncFromStore();
   }
 
-  private getActiveActuators(): ActuatorDevice[] {
-    if (this.revision < 0) {
-      return [];
+  syncFromStore(): void {
+    this.snapshots = this.store.getSnapshots();
+    const simCfg = this.store.getSimConfig();
+    this.tickIndex = simCfg.tickIndex;
+    this.autoRunning = simCfg.autoRunning;
+    this.totalWatts = this.store.getTotalWatts();
+    this.dailyKwh = ((this.totalWatts * 24) / 1000).toFixed(2);
+    this.dailyCost = (((this.totalWatts * 24) / 1000) * 0.55).toFixed(2);
+
+    if (this.totalWatts >= 1000) {
+      this.ecoSuggestion = '当前含大功率制冷负载，建议启用“凉爽时段节能待机”或调高空调设定 1~2℃';
+    } else if (this.totalWatts >= 150) {
+      this.ecoSuggestion = '当前功耗中等，离家时建议使用“离家布防”模式一键降低待机耗电';
+    } else {
+      this.ecoSuggestion = '当前全屋处于绿色低功耗运行状态，节能表现优秀';
     }
-    const list: ActuatorDevice[] = [];
+
+    const active: ActuatorDevice[] = [];
     const all = this.store.getActuators();
     for (let i = 0; i < all.length; i++) {
       if (all[i].getEffectiveWatts() > 0) {
-        list.push(all[i]);
+        active.push(all[i]);
       }
     }
-    return list;
+    this.activeActuators = active;
   }
 
   private showTip(msg: string): void {
@@ -53,27 +72,6 @@ export struct SimulationView {
     } catch (_err) {
       // ignore
     }
-  }
-
-  private getEstimatedDailyKwh(): string {
-    const watts = this.store.getTotalWatts();
-    return ((watts * 24) / 1000).toFixed(2);
-  }
-
-  private getEstimatedDailyCost(): string {
-    const watts = this.store.getTotalWatts();
-    return (((watts * 24) / 1000) * 0.55).toFixed(2);
-  }
-
-  private getEcoSuggestion(): string {
-    const watts = this.store.getTotalWatts();
-    if (watts >= 1000) {
-      return '当前含大功率制冷负载，建议启用“凉爽时段节能待机”或调高空调设定 1~2℃';
-    }
-    if (watts >= 150) {
-      return '当前功耗中等，离家时建议使用“离家布防”模式一键降低待机耗电';
-    }
-    return '当前全屋处于绿色低功耗运行状态，节能表现优秀';
   }
 
   build() {
@@ -86,7 +84,7 @@ export struct SimulationView {
               .fontSize(22)
               .fontWeight(FontWeight.Bold)
               .fontColor('#1A2233')
-            Text(`累计采样 ${this.getSnapshots().length} 个环境时间点 · 当前第 ${this.store.getSimConfig().tickIndex} 步`)
+            Text(`累计采样 ${this.snapshots.length} 个环境时间点 · 当前第 ${this.tickIndex} 步`)
               .fontSize(12)
               .fontColor('#6E7787')
           }
@@ -94,12 +92,12 @@ export struct SimulationView {
 
           Blank()
 
-          Button(this.store.getSimConfig().autoRunning ? '仿真运行中' : '已暂停')
+          Button(this.autoRunning ? '仿真运行中' : '已暂停')
             .type(ButtonType.Capsule)
             .height(30)
             .fontSize(12)
             .fontColor('#FFFFFF')
-            .backgroundColor(this.store.getSimConfig().autoRunning ? '#00B578' : '#8C95A6')
+            .backgroundColor(this.autoRunning ? '#00B578' : '#8C95A6')
             .onClick(() => {
               const running = this.store.toggleAutoSimulation();
               this.showTip(running ? '自动环境仿真已开启' : '自动环境仿真已暂停');
@@ -131,13 +129,13 @@ export struct SimulationView {
           .width('100%')
 
           EnvironmentChart({
-            snapshots: this.getSnapshots(),
+            snapshots: this.snapshots,
             metric: this.activeMetric,
             revision: this.revision
           })
 
           Row({ space: 10 }) {
-            Button(this.store.getSimConfig().autoRunning ? '暂停自动步进' : '启动自动步进 (3s)')
+            Button(this.autoRunning ? '暂停自动步进' : '启动自动步进 (3s)')
               .type(ButtonType.Normal)
               .borderRadius(10)
               .height(36)
@@ -169,7 +167,7 @@ export struct SimulationView {
         .backgroundColor('#FFFFFF')
         .borderRadius(16)
 
-        // 2. 实时设备功耗分布
+        // 2. 实时设备功耗分布与能耗估算
         Column({ space: 10 }) {
           Row() {
             Text('运行设备功耗拆解')
@@ -177,21 +175,20 @@ export struct SimulationView {
               .fontWeight(FontWeight.Bold)
               .fontColor('#1A2233')
             Blank()
-            Text(`总功率 ${this.store.getTotalWatts()} W`)
+            Text(`总功率 ${this.totalWatts} W`)
               .fontSize(13)
               .fontWeight(FontWeight.Bold)
               .fontColor('#00B578')
           }
           .width('100%')
 
-          // 日耗电量与电费估算卡片条
           Column({ space: 6 }) {
             Row() {
               Column({ space: 2 }) {
                 Text('按当前负载估算日耗电')
                   .fontSize(10)
                   .fontColor('#6E7787')
-                Text(`${this.getEstimatedDailyKwh()} kWh`)
+                Text(`${this.dailyKwh} kWh`)
                   .fontSize(15)
                   .fontWeight(FontWeight.Bold)
                   .fontColor('#1A2233')
@@ -203,7 +200,7 @@ export struct SimulationView {
                 Text('预估日电费 (¥0.55/度)')
                   .fontSize(10)
                   .fontColor('#6E7787')
-                Text(`¥ ${this.getEstimatedDailyCost()}`)
+                Text(`¥ ${this.dailyCost}`)
                   .fontSize(15)
                   .fontWeight(FontWeight.Bold)
                   .fontColor('#FA8C16')
@@ -213,7 +210,7 @@ export struct SimulationView {
             }
             .width('100%')
 
-            Text(this.getEcoSuggestion())
+            Text(this.ecoSuggestion)
               .fontSize(11)
               .fontColor('#00B578')
               .width('100%')
@@ -224,13 +221,13 @@ export struct SimulationView {
           .borderRadius(10)
           .border({ width: 1, color: '#D9F7BE' })
 
-          if (this.getActiveActuators().length === 0) {
+          if (this.activeActuators.length === 0) {
             Text('当前所有执行器均处于待机状态（仅传感器基础微功耗运行）')
               .fontSize(12)
               .fontColor('#8C95A6')
               .padding({ top: 6, bottom: 6 })
           } else {
-            ForEach(this.getActiveActuators(), (act: ActuatorDevice) => {
+            ForEach(this.activeActuators, (act: ActuatorDevice) => {
               Column({ space: 4 }) {
                 Row() {
                   Text(`${act.name}（${act.modeText}）`)
@@ -246,7 +243,7 @@ export struct SimulationView {
 
                 Progress({
                   value: act.getEffectiveWatts(),
-                  total: Math.max(100, this.store.getTotalWatts()),
+                  total: Math.max(100, this.totalWatts),
                   type: ProgressType.Linear
                 })
                   .color('#1677FF')

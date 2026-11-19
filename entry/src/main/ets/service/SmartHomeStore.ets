@@ -284,6 +284,14 @@ export class SmartHomeStore {
     return `${virtualHour.toString().padStart(2, '0')}:00`;
   }
 
+  public isHomeOccupied(): boolean {
+    const motion = this.getDeviceById('sensor_bedroom_motion');
+    if (motion instanceof SensorDevice && motion.online) {
+      return motion.value >= 1;
+    }
+    return false;
+  }
+
   /**
    * 切换执行器开关
    */
@@ -451,13 +459,21 @@ export class SmartHomeStore {
     // 同步人员在位传感状态：离家布防设为无人(0)，回家/睡眠设为有人(1)
     let motionHint = '';
     const motionSensor = this.getDeviceById('sensor_bedroom_motion');
-    if (motionSensor instanceof SensorDevice && motionSensor.online) {
+    if (motionSensor instanceof SensorDevice) {
       if (targetScene.id === 'scene_away') {
-        motionSensor.updateReading(0);
-        motionHint = '，人体红外已同步为无人';
+        if (motionSensor.online) {
+          motionSensor.updateReading(0);
+          motionHint = '，人体红外已置为无人';
+        } else {
+          motionHint = '（人体红外离线未更新）';
+        }
       } else if (targetScene.id === 'scene_home' || targetScene.id === 'scene_sleep') {
-        motionSensor.updateReading(1);
-        motionHint = '，人体红外已同步为有人';
+        if (motionSensor.online) {
+          motionSensor.updateReading(1);
+          motionHint = '，人体红外已置为有人';
+        } else {
+          motionHint = '（人体红外离线未更新）';
+        }
       }
     }
 
@@ -470,8 +486,8 @@ export class SmartHomeStore {
     this.notifyChanged();
     this.persistAsync();
     return failCount > 0
-      ? `已激活【${targetScene.name}】（${okCount}成功/${failCount}离线跳过）`
-      : `已激活【${targetScene.name}】`;
+      ? `已激活【${targetScene.name}】（${okCount}成功/${failCount}离线跳过）${motionHint}`
+      : `已激活【${targetScene.name}】${motionHint}`;
   }
 
   /**
@@ -510,8 +526,8 @@ export class SmartHomeStore {
       light.setOnline(true);
       light.updateReading(65);
     }
-    if (motion instanceof SensorDevice) {
-      motion.setOnline(true);
+    const isAwayMode = this.activeSceneId === 'scene_away';
+    if (!isAwayMode && motion instanceof SensorDevice && motion.online) {
       motion.updateReading(1);
     }
     const summary = RuleEngine.runCycle(this.rules, this.devices, Date.now(), true);
@@ -519,6 +535,9 @@ export class SmartHomeStore {
     this.recordLiveSnapshot('夜幕演练');
     this.notifyChanged();
     this.persistAsync();
+    if (isAwayMode) {
+      return `已注入夜幕暗光(65lux)，当前处于离家无人状态，未误开照明`;
+    }
     return `已注入暗光有人(65lux)工况，触发 ${summary.triggeredCount} 条规则`;
   }
 
@@ -911,6 +930,10 @@ export class SmartHomeStore {
 
   private notifyChanged(): void {
     this.revision += 1;
-    AppStorage.setOrCreate(STORE_REVISION_KEY, this.revision);
+    try {
+      AppStorage.setOrCreate(STORE_REVISION_KEY, this.revision);
+    } catch (_err) {
+      // 单元测试无 ArkUI 运行时环境时安全忽略
+    }
   }
 }

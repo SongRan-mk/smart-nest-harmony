@@ -1,4 +1,5 @@
 import { DeviceDetailParam, ROUTE_DEVICE_DETAIL, ROUTE_RULE_EDITOR, RuleEditorParam } from '../model/NavTypes';
+import { STORE_REVISION_KEY } from '../service/SmartHomeStore';
 import { DashboardView } from '../view/DashboardView';
 import { LogsView } from '../view/LogsView';
 import { RulesView } from '../view/RulesView';
@@ -15,6 +16,10 @@ import { RuleEditorPage } from './RuleEditorPage';
 struct Index {
   @Provide('pageStack') pageStack: NavPathStack = new NavPathStack();
   @State currentIndex: number = 0;
+
+  aboutToAppear(): void {
+    AppStorage.setOrCreate(STORE_REVISION_KEY, 0);
+  }
 
   @Builder
   pageMap(name: string, param: Object) {

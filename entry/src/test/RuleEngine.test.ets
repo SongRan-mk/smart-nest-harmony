@@ -12,6 +12,7 @@ import {
 import { PersistenceService } from '../main/ets/service/PersistenceService';
 import { RuleEngine } from '../main/ets/service/RuleEngine';
 import { SimulationEngine } from '../main/ets/service/SimulationEngine';
+import { SmartHomeStore } from '../main/ets/service/SmartHomeStore';
 
 export default function ruleEngineTest() {
   describe('SmartNestRuleEngineAndSimTests', () => {
@@ -291,6 +292,30 @@ export default function ruleEngineTest() {
       const res = RuleEngine.evaluateRule(neqRule, [motion, lamp], 40000);
       expect(res.triggered).assertTrue();
       expect(lamp.powerOn).assertFalse();
+    });
+
+    // 12. 正常用例：场景切换同步人体红外在位状态（离家=无人，睡眠/回家=有人）
+    it('normal_scene_away_and_sleep_motion_sync', 0, () => {
+      const store = SmartHomeStore.getInstance();
+      const motion = store.getDeviceById('sensor_bedroom_motion');
+      expect(motion instanceof SensorDevice).assertTrue();
+      const sensor = motion as SensorDevice;
+      sensor.setOnline(true);
+
+      store.applyScene('scene_away');
+      expect(sensor.value).assertEqual(0);
+      expect(sensor.getPrimaryValueText()).assertEqual('无人');
+      expect(store.isHomeOccupied()).assertFalse();
+
+      // 离家无人状态下夜幕降临不应强制改为有人
+      store.triggerDrill('nightfall');
+      expect(sensor.value).assertEqual(0);
+
+      // 切换睡眠模式后同步为有人
+      store.applyScene('scene_sleep');
+      expect(sensor.value).assertEqual(1);
+      expect(sensor.getPrimaryValueText()).assertEqual('有人');
+      expect(store.isHomeOccupied()).assertTrue();
     });
   });
 }

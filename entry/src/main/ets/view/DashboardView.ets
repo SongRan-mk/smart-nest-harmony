@@ -6,15 +6,45 @@ import { RoomId, RoomInfo, ScenePreset } from '../model/Types';
 import { SmartHomeStore, STORE_REVISION_KEY } from '../service/SmartHomeStore';
 
 /**
- * 智居看板视图：全屋摘要、突发演练、一键场景与多房间设备控制网格
+ * 智居看板视图：全屋摘要、应急告警横幅、数字孪生沙盘、突发演练、一键场景与多房间设备网格
  */
 @Component
 export struct DashboardView {
   @Consume('pageStack') pageStack: NavPathStack;
-  @StorageProp(STORE_REVISION_KEY) revision: number = 0;
+  @StorageProp(STORE_REVISION_KEY) @Watch('syncFromStore') revision: number = 0;
   @State selectedRoom: RoomId = RoomId.ALL;
 
+  @State persistenceStatus: string = '本地首选项已同步';
+  @State onlineCount: number = 13;
+  @State totalDeviceCount: number = 13;
+  @State alertCount: number = 0;
+  @State primaryTempText: string = '25.4℃';
+  @State primaryHumiText: string = '54%';
+  @State totalWatts: number = 0;
+  @State autoRunning: boolean = false;
+  @State activeSceneId: string = '';
+  @State homeOccupied: boolean = true;
+  @State filteredDevices: BaseDevice[] = [];
+
   private store: SmartHomeStore = SmartHomeStore.getInstance();
+
+  aboutToAppear(): void {
+    this.syncFromStore();
+  }
+
+  syncFromStore(): void {
+    this.persistenceStatus = this.store.getPersistenceStatusText();
+    this.onlineCount = this.store.getOnlineCount();
+    this.totalDeviceCount = this.store.getTotalDeviceCount();
+    this.alertCount = this.store.getActiveAlertCount();
+    this.primaryTempText = this.store.getPrimaryTempText();
+    this.primaryHumiText = this.store.getPrimaryHumiText();
+    this.totalWatts = this.store.getTotalWatts();
+    this.autoRunning = this.store.getSimConfig().autoRunning;
+    this.activeSceneId = this.store.getActiveSceneId();
+    this.homeOccupied = this.store.isHomeOccupied();
+    this.filteredDevices = this.store.getDevices(this.selectedRoom);
+  }
 
   private showTip(msg: string): void {
     try {
@@ -32,25 +62,17 @@ export struct DashboardView {
     this.pageStack.pushPathByName(ROUTE_DEVICE_DETAIL, param);
   }
 
-  private getFilteredDevices(): BaseDevice[] {
-    // 读取 revision 建立响应式依赖
-    if (this.revision < 0) {
-      return [];
-    }
-    return this.store.getDevices(this.selectedRoom);
-  }
-
   build() {
     Scroll() {
       Column({ space: 14 }) {
-        // 1. 顶部标题与持久化状态徽章
+        // 1. 顶部标题与状态徽章
         Row() {
           Column({ space: 2 }) {
             Text('智巢中枢 SmartNest')
               .fontSize(22)
               .fontWeight(FontWeight.Bold)
               .fontColor('#1A2233')
-            Text(this.store.getPersistenceStatusText())
+            Text(this.persistenceStatus)
               .fontSize(12)
               .fontColor('#00B578')
           }
@@ -59,19 +81,27 @@ export struct DashboardView {
           Blank()
 
           Row({ space: 6 }) {
-            Text(`在线 ${this.store.getOnlineCount()}/${this.store.getTotalDeviceCount()}`)
-              .fontSize(12)
-              .fontColor('#1677FF')
-              .backgroundColor('#E6F4FF')
-              .padding({ left: 10, right: 10, top: 5, bottom: 5 })
+            Text(this.homeOccupied ? '有人在家' : '离家无人')
+              .fontSize(11)
+              .fontWeight(FontWeight.Medium)
+              .fontColor(this.homeOccupied ? '#00B578' : '#64748B')
+              .backgroundColor(this.homeOccupied ? '#E6FFFB' : '#EDF2F7')
+              .padding({ left: 8, right: 8, top: 5, bottom: 5 })
               .borderRadius(14)
 
-            if (this.store.getActiveAlertCount() > 0) {
-              Text(`告警 ${this.store.getActiveAlertCount()}`)
-                .fontSize(12)
+            Text(`在线 ${this.onlineCount}/${this.totalDeviceCount}`)
+              .fontSize(11)
+              .fontColor('#1677FF')
+              .backgroundColor('#E6F4FF')
+              .padding({ left: 8, right: 8, top: 5, bottom: 5 })
+              .borderRadius(14)
+
+            if (this.alertCount > 0) {
+              Text(`告警 ${this.alertCount}`)
+                .fontSize(11)
                 .fontColor('#FFFFFF')
                 .backgroundColor('#FF4D4F')
-                .padding({ left: 10, right: 10, top: 5, bottom: 5 })
+                .padding({ left: 8, right: 8, top: 5, bottom: 5 })
                 .borderRadius(14)
             }
           }
@@ -79,11 +109,11 @@ export struct DashboardView {
         .width('100%')
         .padding({ top: 6 })
 
-        // 1.5 紧急告警应急横幅（存在烟雾/高温/鸣笛告警时置顶提示）
-        if (this.store.getActiveAlertCount() > 0) {
+        // 1.5 紧急告警应急横幅
+        if (this.alertCount > 0) {
           Row({ space: 10 }) {
             Column({ space: 2 }) {
-              Text(`检测到 ${this.store.getActiveAlertCount()} 项环境/安防异常告警`)
+              Text(`检测到 ${this.alertCount} 项环境/安防异常告警`)
                 .fontSize(13)
                 .fontWeight(FontWeight.Bold)
                 .fontColor('#CF1322')
@@ -118,7 +148,7 @@ export struct DashboardView {
               Text('客厅环境')
                 .fontSize(12)
                 .fontColor('#D6E4FF')
-              Text(`${this.store.getPrimaryTempText()} · ${this.store.getPrimaryHumiText()}`)
+              Text(`${this.primaryTempText} · ${this.primaryHumiText}`)
                 .fontSize(20)
                 .fontWeight(FontWeight.Bold)
                 .fontColor('#FFFFFF')
@@ -131,7 +161,7 @@ export struct DashboardView {
               Text('全屋实时功耗')
                 .fontSize(12)
                 .fontColor('#D6E4FF')
-              Text(`${this.store.getTotalWatts()} W`)
+              Text(`${this.totalWatts} W`)
                 .fontSize(20)
                 .fontWeight(FontWeight.Bold)
                 .fontColor('#FFFFFF')
@@ -141,12 +171,12 @@ export struct DashboardView {
           .width('100%')
 
           Row({ space: 10 }) {
-            Button(this.store.getSimConfig().autoRunning ? '暂停自动仿真' : '开启自动仿真')
+            Button(this.autoRunning ? '暂停自动仿真' : '开启自动仿真')
               .type(ButtonType.Capsule)
               .height(34)
               .fontSize(13)
-              .fontColor(this.store.getSimConfig().autoRunning ? '#FFFFFF' : '#1677FF')
-              .backgroundColor(this.store.getSimConfig().autoRunning ? '#00B578' : '#FFFFFF')
+              .fontColor(this.autoRunning ? '#FFFFFF' : '#1677FF')
+              .backgroundColor(this.autoRunning ? '#00B578' : '#FFFFFF')
               .layoutWeight(1)
               .onClick(() => {
                 const running = this.store.toggleAutoSimulation();
@@ -255,26 +285,26 @@ export struct DashboardView {
                   Text(scene.name)
                     .fontSize(14)
                     .fontWeight(FontWeight.Bold)
-                    .fontColor(this.store.getActiveSceneId() === scene.id ? '#FFFFFF' : '#1A2233')
+                    .fontColor(this.activeSceneId === scene.id ? '#FFFFFF' : '#1A2233')
                   Text(scene.description)
                     .fontSize(10)
-                    .fontColor(this.store.getActiveSceneId() === scene.id ? '#E6F4FF' : '#8C95A6')
+                    .fontColor(this.activeSceneId === scene.id ? '#E6F4FF' : '#8C95A6')
                     .maxLines(1)
                     .textOverflow({ overflow: TextOverflow.Ellipsis })
                 }
-                .width(132)
+                .width(136)
                 .padding(10)
                 .alignItems(HorizontalAlign.Start)
                 .borderRadius(12)
-                .backgroundColor(this.store.getActiveSceneId() === scene.id ? scene.accentColor : '#FFFFFF')
+                .backgroundColor(this.activeSceneId === scene.id ? scene.accentColor : '#FFFFFF')
                 .border({
                   width: 1,
-                  color: this.store.getActiveSceneId() === scene.id ? scene.accentColor : '#EAECEF'
+                  color: this.activeSceneId === scene.id ? scene.accentColor : '#EAECEF'
                 })
                 .onClick(() => {
                   this.showTip(this.store.applyScene(scene.id));
                 })
-              }, (scene: ScenePreset) => scene.id)
+              }, (scene: ScenePreset) => `${scene.id}_${this.activeSceneId === scene.id}`)
             }
           }
           .scrollable(ScrollDirection.Horizontal)
@@ -298,6 +328,7 @@ export struct DashboardView {
                   .border({ width: 1, color: this.selectedRoom === room.id ? '#1677FF' : '#E5E7EB' })
                   .onClick(() => {
                     this.selectedRoom = room.id;
+                    this.filteredDevices = this.store.getDevices(room.id);
                   })
               }, (room: RoomInfo) => room.id)
             }
@@ -307,7 +338,7 @@ export struct DashboardView {
           .width('100%')
 
           GridRow({ columns: 2, gutter: { x: 10, y: 10 } }) {
-            ForEach(this.getFilteredDevices(), (dev: BaseDevice) => {
+            ForEach(this.filteredDevices, (dev: BaseDevice) => {
               GridCol() {
                 DeviceCard({
                   deviceId: dev.id,

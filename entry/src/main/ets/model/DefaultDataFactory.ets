@@ -382,7 +382,7 @@ export class DefaultDataFactory {
       {
         id: 'scene_sleep',
         name: '睡眠模式',
-        description: '关客厅灯与台灯、拉合窗帘、空调26℃静音、卧室微光',
+        description: '关客厅灯与台灯、遮光、空调26℃、卧室在位(有人)',
         accentColor: '#722ED1',
         actions: [
           { id: 'ss_1', deviceId: 'act_living_light', targetPowerOn: false },
@@ -396,7 +396,7 @@ export class DefaultDataFactory {
       {
         id: 'scene_away',
         name: '离家布防',
-        description: '关闭照明与空调、锁闭智能门锁、进入低功耗布防',
+        description: '关空调与照明、反锁门锁、人体红外同步为无人',
         accentColor: '#00B578',
         actions: [
           { id: 'sa_1', deviceId: 'act_living_ac', targetPowerOn: false },
