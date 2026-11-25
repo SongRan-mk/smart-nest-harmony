@@ -215,8 +215,8 @@ export class DefaultDataFactory {
     return [
       {
         id: 'rule_high_temp_ac',
-        name: '高温自动开启制冷',
-        description: '当客厅温度高于 28℃ 时，自动开启空调制冷至 24℃ 并适当合拢窗帘',
+        name: '高温有人自动制冷',
+        description: '当客厅温度高于 28℃ 且室内有人活动时，自动开启空调制冷至 24℃ 并合拢窗帘遮阳（无人时不浪费电）',
         enabled: true,
         priority: RulePriority.NORMAL,
         logic: LogicOperator.AND,
@@ -227,6 +227,13 @@ export class DefaultDataFactory {
             metricKey: MetricKey.TEMPERATURE,
             operator: ConditionOperator.GT,
             threshold: 28
+          },
+          {
+            id: 'cond_temp_motion_eq_1',
+            deviceId: 'sensor_bedroom_motion',
+            metricKey: MetricKey.MOTION_DETECTED,
+            operator: ConditionOperator.EQ,
+            threshold: 1
           }
         ],
         actions: [

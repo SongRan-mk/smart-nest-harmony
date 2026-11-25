@@ -396,5 +396,24 @@ export default function ruleEngineTest() {
       expect(smoke.value <= 35).assertTrue();
       expect(siren.powerOn).assertFalse();
     });
+
+    // 15. 正常节能逻辑用例：离家无人时遇高温不误开空调，切换有人后立即开启制冷
+    it('normal_away_heatwave_no_ac_waste', 0, () => {
+      const store = SmartHomeStore.getInstance();
+      store.applyScene('scene_away');
+      const ac = store.getDeviceById('act_living_ac') as ActuatorDevice;
+      expect(store.isHomeOccupied()).assertFalse();
+      expect(ac.powerOn).assertFalse();
+
+      // 无人状态下注入 31.5℃ 高温 -> 不应浪费电开启空调
+      store.triggerDrill('heatwave');
+      expect(ac.powerOn).assertFalse();
+
+      // 有人归家后再次评估 -> 立即开启空调制冷至 24℃
+      store.updateSensorValue('sensor_bedroom_motion', 1);
+      expect(store.isHomeOccupied()).assertTrue();
+      expect(ac.powerOn).assertTrue();
+      expect(ac.levelValue).assertEqual(24);
+    });
   });
 }

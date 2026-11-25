@@ -166,6 +166,19 @@ export class SmartHomeStore {
           }
         }
       }
+      // 自动为旧缓存迁移内置高温规则（补齐有人在位条件，避免无人空开空调）
+      for (let i = 0; i < saved.rules.length; i++) {
+        if (saved.rules[i].id === 'rule_high_temp_ac' && saved.rules[i].conditions.length === 1) {
+          for (let k = 0; k < defaultRules.length; k++) {
+            if (defaultRules[k].id === 'rule_high_temp_ac') {
+              saved.rules[i].name = defaultRules[k].name;
+              saved.rules[i].description = defaultRules[k].description;
+              saved.rules[i].conditions = defaultRules[k].conditions;
+              break;
+            }
+          }
+        }
+      }
       // 自动为旧缓存补入内置自愈恢复规则 rule_smoke_clear_reset
       let hasClearRule = false;
       for (let i = 0; i < saved.rules.length; i++) {
@@ -582,6 +595,9 @@ export class SmartHomeStore {
       this.recordLiveSnapshot('热浪演练');
       this.notifyChanged();
       this.persistAsync();
+      if (!this.isHomeOccupied() && summary.triggeredCount === 0) {
+        return '已注入 31.5℃ 高温，但当前【离家无人】未浪费电开空调';
+      }
       return `已注入 31.5℃ 高温工况，触发 ${summary.triggeredCount} 条规则`;
     }
     if (drillType === 'smoke') {
@@ -977,16 +993,17 @@ export class SmartHomeStore {
       this.recordLiveSnapshot('10:00');
     } else if (stage === 3) {
       this.theaterClockOverride = '14:00';
-      this.activeSceneId = '';
+      this.activeSceneId = 'scene_home';
+      if (motion) { motion.updateReading(1); }
       if (temp) { temp.updateReading(31.6); }
       if (humi) { humi.updateReading(46); }
       if (light) { light.updateReading(680); }
 
       const summary = RuleEngine.runCycle(this.rules, this.devices, Date.now(), true);
       this.ingestCycleLogs(summary);
-      this.butlerHeadline = '第 3/5 幕 · 14:00 午后热浪联动';
-      this.butlerNarration = `午后室温飙升至 31.6℃，真实命中 ${summary.triggeredCount} 条规则：变频空调自动开启 24℃ 强力制冷，窗帘合拢至 30% 遮阳！`;
-      this.appendLog(LogSource.SIMULATION, '智巢剧场 · 14:00 午后热浪', this.butlerNarration);
+      this.butlerHeadline = '第 3/5 幕 · 14:00 午归热浪联动';
+      this.butlerNarration = `主人中午归家【有人】且室温飙至 31.6℃，双条件命中(${summary.triggeredCount}条)：空调开启 24℃ 强力制冷，窗帘合拢 30% 遮阳，降温中…`;
+      this.appendLog(LogSource.SIMULATION, '智巢剧场 · 14:00 午归热浪', this.butlerNarration);
       this.recordLiveSnapshot('14:00');
     } else if (stage === 4) {
       this.theaterClockOverride = '19:00';
@@ -998,13 +1015,14 @@ export class SmartHomeStore {
 
       const summary = RuleEngine.runCycle(this.rules, this.devices, Date.now(), true);
       this.ingestCycleLogs(summary);
-      this.butlerHeadline = '第 4/5 幕 · 19:00 归家夜幕迎宾';
-      this.butlerNarration = `主人归家【有人】且夜幕降临(62lux)，AND 双条件命中(${summary.triggeredCount}条)：客厅主灯 80% 与主卧暖光 45% 自动点亮！`;
-      this.appendLog(LogSource.SIMULATION, '智巢剧场 · 19:00 归家夜幕', this.butlerNarration);
+      this.butlerHeadline = '第 4/5 幕 · 19:00 夜幕暗光迎宾';
+      this.butlerNarration = `室内【有人】且夜幕降临(62lux)，AND 双条件命中(${summary.triggeredCount}条)：客厅主灯 80% 与主卧暖光 45% 自动点亮！`;
+      this.appendLog(LogSource.SIMULATION, '智巢剧场 · 19:00 夜幕亮灯', this.butlerNarration);
       this.recordLiveSnapshot('19:00');
     } else {
       this.theaterClockOverride = '21:00';
       this.activeSceneId = '';
+      if (motion) { motion.updateReading(1); }
       if (temp) { temp.updateReading(30.8); }
       if (smoke) { smoke.updateReading(188); }
 

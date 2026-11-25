@@ -41,8 +41,8 @@ export struct DashboardView {
   private theaterChips: TheaterStepChip[] = [
     { idx: 1, label: '08 唤醒' },
     { idx: 2, label: '10 离家' },
-    { idx: 3, label: '14 热浪' },
-    { idx: 4, label: '19 归家' },
+    { idx: 3, label: '14 午归' },
+    { idx: 4, label: '19 夜幕' },
     { idx: 5, label: '21 仲裁' }
   ];
 
