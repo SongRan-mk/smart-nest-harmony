@@ -78,11 +78,10 @@ entry/src/
 ## 4. 运行效果展示
 
 ### 4.1 应用主要页面截图
-> 请在 DevEco Studio 模拟器运行后截图保存至 `docs/screenshots/` 目录并确认下方链接正常显示：
 
-| 智居看板与场景控制 | 规则编排与编辑器 | 仿真趋势与 Mock 自检 | 联动日志与重启恢复 |
-| :---: | :---: | :---: | :---: |
-| ![看板](docs/screenshots/dashboard.png) | ![规则](docs/screenshots/rules.png) | ![仿真](docs/screenshots/simulation.png) | ![日志](docs/screenshots/logs.png) |
+| 智居看板与数字孪生沙盘 | 规则编排与优先级仲裁 | 仿真趋势与能耗拆解 | 内置三类 Mock 自检 | 联动与仲裁日志 |
+| :---: | :---: | :---: | :---: | :---: |
+| ![看板](docs/screenshots/dashboard.jpeg) | ![规则](docs/screenshots/rules.jpeg) | ![仿真](docs/screenshots/simulation.jpeg) | ![自检](docs/screenshots/mock_diag.jpeg) | ![日志](docs/screenshots/logs.jpeg) |
 
 ### 4.2 实际运行录屏
 > 录屏文件建议放置于 `docs/demo/smart-nest-demo.mp4`（或发布至 GitHub Release / README 视频拖拽上传后替换下方链接）：
