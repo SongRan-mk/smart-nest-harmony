@@ -31,12 +31,11 @@ struct Index {
   }
 
   @Builder
-  tabBarItem(index: number, title: string, iconChar: string) {
+  tabBarItem(index: number, title: string, iconRes: Resource) {
     Column({ space: 3 }) {
-      Text(iconChar)
-        .fontSize(18)
-        .fontWeight(FontWeight.Bold)
-        .fontColor(this.currentIndex === index ? '#1677FF' : '#8C95A6')
+      SymbolGlyph(iconRes)
+        .fontSize(21)
+        .fontColor([this.currentIndex === index ? '#1677FF' : '#8C95A6'])
       Text(title)
         .fontSize(11)
         .fontWeight(this.currentIndex === index ? FontWeight.Bold : FontWeight.Normal)
@@ -54,22 +53,22 @@ struct Index {
         TabContent() {
           DashboardView()
         }
-        .tabBar(this.tabBarItem(0, '看板', '⌂'))
+        .tabBar(this.tabBarItem(0, '看板', $r('sys.symbol.house_fill')))
 
         TabContent() {
           RulesView()
         }
-        .tabBar(this.tabBarItem(1, '规则', '⚡'))
+        .tabBar(this.tabBarItem(1, '规则', $r('sys.symbol.gearshape_fill')))
 
         TabContent() {
           SimulationView()
         }
-        .tabBar(this.tabBarItem(2, '仿真', '∿'))
+        .tabBar(this.tabBarItem(2, '仿真', $r('sys.symbol.waveform_path_circle')))
 
         TabContent() {
           LogsView()
         }
-        .tabBar(this.tabBarItem(3, '日志', '≡'))
+        .tabBar(this.tabBarItem(3, '日志', $r('sys.symbol.doc_plaintext_fill')))
       }
       .barHeight(54)
       .barBackgroundColor('#FFFFFF')

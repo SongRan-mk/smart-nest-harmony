@@ -37,11 +37,11 @@ export struct DashboardView {
 
   private store: SmartHomeStore = SmartHomeStore.getInstance();
   private theaterChips: TheaterStepChip[] = [
-    { idx: 1, label: '08:00 唤醒' },
-    { idx: 2, label: '10:00 离家' },
-    { idx: 3, label: '14:00 热浪' },
-    { idx: 4, label: '19:00 归家' },
-    { idx: 5, label: '21:00 仲裁' }
+    { idx: 1, label: '08 唤醒' },
+    { idx: 2, label: '10 离家' },
+    { idx: 3, label: '14 热浪' },
+    { idx: 4, label: '19 归家' },
+    { idx: 5, label: '21 仲裁' }
   ];
 
   aboutToAppear(): void {
@@ -162,70 +162,40 @@ export struct DashboardView {
           .border({ width: 1.5, color: '#FFA39E' })
         }
 
-        // 2. 全屋运行摘要卡
-        Column({ space: 12 }) {
-          Row() {
-            Column({ space: 4 }) {
-              Text('客厅环境')
-                .fontSize(12)
-                .fontColor('#D6E4FF')
-              Text(`${this.primaryTempText} · ${this.primaryHumiText}`)
-                .fontSize(20)
-                .fontWeight(FontWeight.Bold)
-                .fontColor('#FFFFFF')
-            }
-            .alignItems(HorizontalAlign.Start)
-
-            Blank()
-
-            Column({ space: 4 }) {
-              Text('全屋实时功耗')
-                .fontSize(12)
-                .fontColor('#D6E4FF')
-              Text(`${this.totalWatts} W`)
-                .fontSize(20)
-                .fontWeight(FontWeight.Bold)
-                .fontColor('#FFFFFF')
-            }
-            .alignItems(HorizontalAlign.End)
-          }
-          .width('100%')
-
-          Row({ space: 10 }) {
-            Button(this.autoRunning ? '暂停自动仿真' : '开启自动仿真')
-              .type(ButtonType.Capsule)
-              .height(34)
-              .fontSize(13)
-              .fontColor(this.autoRunning ? '#FFFFFF' : '#1677FF')
-              .backgroundColor(this.autoRunning ? '#00B578' : '#FFFFFF')
-              .layoutWeight(1)
-              .onClick(() => {
-                const running = this.store.toggleAutoSimulation();
-                this.showTip(running ? '已启动 3 秒周期环境仿真' : '已暂停自动仿真');
-              })
-
-            Button('推进仿真步 +1')
-              .type(ButtonType.Capsule)
-              .height(34)
-              .fontSize(13)
+        // 2. 全屋运行摘要卡（精简紧凑，首屏完整释放空间给沙盘）
+        Row() {
+          Column({ space: 4 }) {
+            Text('客厅实时环境')
+              .fontSize(12)
+              .fontColor('#D6E4FF')
+            Text(`${this.primaryTempText} · ${this.primaryHumiText}`)
+              .fontSize(20)
+              .fontWeight(FontWeight.Bold)
               .fontColor('#FFFFFF')
-              .backgroundColor('rgba(255, 255, 255, 0.22)')
-              .layoutWeight(1)
-              .onClick(() => {
-                const summary = this.store.stepSimulationOnce();
-                this.showTip(`仿真步进完成 · 命中 ${summary.triggeredCount} 条规则`);
-              })
           }
-          .width('100%')
+          .alignItems(HorizontalAlign.Start)
+
+          Blank()
+
+          Column({ space: 4 }) {
+            Text('全屋实时功耗')
+              .fontSize(12)
+              .fontColor('#D6E4FF')
+            Text(`${this.totalWatts} W`)
+              .fontSize(20)
+              .fontWeight(FontWeight.Bold)
+              .fontColor('#FFFFFF')
+          }
+          .alignItems(HorizontalAlign.End)
         }
         .width('100%')
-        .padding(16)
-        .borderRadius(18)
+        .padding({ left: 16, right: 16, top: 14, bottom: 14 })
+        .borderRadius(16)
         .linearGradient({
           direction: GradientDirection.RightBottom,
           colors: [['#1677FF', 0.0], ['#2F54EB', 1.0]]
         })
-        .shadow({ radius: 12, color: '#241677FF', offsetX: 0, offsetY: 4 })
+        .shadow({ radius: 10, color: '#241677FF', offsetX: 0, offsetY: 4 })
 
         // 2.2 24h 智巢一天沉浸式互动剧场 + 管家实时播报气泡
         Column({ space: 10 }) {
@@ -235,7 +205,7 @@ export struct DashboardView {
                 .fontSize(15)
                 .fontWeight(FontWeight.Bold)
                 .fontColor('#1A2233')
-              Text('5 幕连续剧情 · 真实触发规则引擎与冲突仲裁')
+              Text('点击任意一幕或自动演播 · 真实驱动规则引擎')
                 .fontSize(11)
                 .fontColor('#6E7787')
             }
@@ -272,26 +242,28 @@ export struct DashboardView {
           }
           .width('100%')
 
-          // 5 幕进度时间轴
-          Scroll() {
-            Row({ space: 6 }) {
-              ForEach(this.theaterChips, (chip: TheaterStepChip) => {
-                Text(chip.label)
-                  .fontSize(10)
-                  .fontWeight(this.theaterStage === chip.idx ? FontWeight.Bold : FontWeight.Normal)
-                  .fontColor(this.theaterStage === chip.idx
-                    ? '#FFFFFF'
-                    : (this.theaterStage > chip.idx ? '#00B578' : '#64748B'))
-                  .backgroundColor(this.theaterStage === chip.idx
-                    ? (chip.idx === 5 ? '#FF4D4F' : '#722ED1')
-                    : (this.theaterStage > chip.idx ? '#E6FFFB' : '#F2F4F8'))
-                  .padding({ left: 8, right: 8, top: 4, bottom: 4 })
-                  .borderRadius(10)
-              }, (chip: TheaterStepChip) => `${chip.idx}_${this.theaterStage}`)
-            }
+          // 5 幕等分可点击进度时间轴（完整显示不截断）
+          Row({ space: 5 }) {
+            ForEach(this.theaterChips, (chip: TheaterStepChip) => {
+              Text(chip.label)
+                .fontSize(10)
+                .textAlign(TextAlign.Center)
+                .layoutWeight(1)
+                .fontWeight(this.theaterStage === chip.idx ? FontWeight.Bold : FontWeight.Normal)
+                .fontColor(this.theaterStage === chip.idx
+                  ? '#FFFFFF'
+                  : (this.theaterStage > chip.idx ? '#00B578' : '#64748B'))
+                .backgroundColor(this.theaterStage === chip.idx
+                  ? (chip.idx === 5 ? '#FF4D4F' : '#722ED1')
+                  : (this.theaterStage > chip.idx ? '#E6FFFB' : '#F2F4F8'))
+                .padding({ top: 5, bottom: 5 })
+                .borderRadius(10)
+                .onClick(() => {
+                  const st = this.store.jumpToTheaterStage(chip.idx);
+                  this.showTip(st.butlerHeadline);
+                })
+            }, (chip: TheaterStepChip) => `${chip.idx}_${this.theaterStage}`)
           }
-          .scrollable(ScrollDirection.Horizontal)
-          .scrollBar(BarState.Off)
           .width('100%')
 
           // 智巢管家实时解说气泡

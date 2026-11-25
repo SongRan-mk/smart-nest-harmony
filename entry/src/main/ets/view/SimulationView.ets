@@ -28,11 +28,11 @@ export struct SimulationView {
 
   private store: SmartHomeStore = SmartHomeStore.getInstance();
   private metricOptions: MetricOption[] = [
-    { key: 'temperature', label: '温度 ℃' },
-    { key: 'humidity', label: '湿度 %' },
-    { key: 'illuminance', label: '光照 lux' },
-    { key: 'smokeLevel', label: '烟雾 ppm' },
-    { key: 'totalWatts', label: '功耗 W' }
+    { key: 'temperature', label: '温度' },
+    { key: 'humidity', label: '湿度' },
+    { key: 'illuminance', label: '光照' },
+    { key: 'smokeLevel', label: '烟雾' },
+    { key: 'totalWatts', label: '功耗' }
   ];
 
   aboutToAppear(): void {
@@ -108,24 +108,22 @@ export struct SimulationView {
 
         // 1. Canvas 趋势图卡片
         Column({ space: 10 }) {
-          Scroll() {
-            Row({ space: 8 }) {
-              ForEach(this.metricOptions, (opt: MetricOption) => {
-                Text(opt.label)
-                  .fontSize(12)
-                  .fontWeight(this.activeMetric === opt.key ? FontWeight.Bold : FontWeight.Normal)
-                  .fontColor(this.activeMetric === opt.key ? '#FFFFFF' : '#4E5969')
-                  .backgroundColor(this.activeMetric === opt.key ? '#1677FF' : '#F2F4F8')
-                  .padding({ left: 12, right: 12, top: 6, bottom: 6 })
-                  .borderRadius(14)
-                  .onClick(() => {
-                    this.activeMetric = opt.key;
-                  })
-              }, (opt: MetricOption) => opt.key)
-            }
+          Row({ space: 6 }) {
+            ForEach(this.metricOptions, (opt: MetricOption) => {
+              Text(opt.label)
+                .fontSize(12)
+                .textAlign(TextAlign.Center)
+                .layoutWeight(1)
+                .fontWeight(this.activeMetric === opt.key ? FontWeight.Bold : FontWeight.Normal)
+                .fontColor(this.activeMetric === opt.key ? '#FFFFFF' : '#4E5969')
+                .backgroundColor(this.activeMetric === opt.key ? '#1677FF' : '#F2F4F8')
+                .padding({ top: 6, bottom: 6 })
+                .borderRadius(14)
+                .onClick(() => {
+                  this.activeMetric = opt.key;
+                })
+            }, (opt: MetricOption) => opt.key)
           }
-          .scrollable(ScrollDirection.Horizontal)
-          .scrollBar(BarState.Off)
           .width('100%')
 
           EnvironmentChart({

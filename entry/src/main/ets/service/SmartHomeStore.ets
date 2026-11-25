@@ -146,7 +146,26 @@ export class SmartHomeStore {
       }
     }
     this.devices = freshDevices;
-    this.rules = saved.rules.length > 0 ? saved.rules : DefaultDataFactory.createDefaultRules();
+    const defaultRules = DefaultDataFactory.createDefaultRules();
+    if (saved.rules.length > 0) {
+      // 兼容旧版本持久化缓存：为缺失 priority 的内置规则自动补齐出厂优先级
+      for (let i = 0; i < saved.rules.length; i++) {
+        if (saved.rules[i].priority === undefined) {
+          for (let k = 0; k < defaultRules.length; k++) {
+            if (defaultRules[k].id === saved.rules[i].id) {
+              saved.rules[i].priority = defaultRules[k].priority;
+              break;
+            }
+          }
+          if (saved.rules[i].priority === undefined) {
+            saved.rules[i].priority = RulePriority.NORMAL;
+          }
+        }
+      }
+      this.rules = saved.rules;
+    } else {
+      this.rules = defaultRules;
+    }
     this.logs = saved.logs.length > 0 ? saved.logs.slice(0, SmartHomeStore.MAX_LOGS) : DefaultDataFactory.createInitialLogs();
     if (saved.simConfig && saved.simConfig.snapshots.length > 0) {
       this.simConfig = saved.simConfig;
@@ -740,6 +759,17 @@ export class SmartHomeStore {
     return this.getDayTheaterStatus();
   }
 
+  /**
+   * 点击时间轴任意一幕，直接跳播至指定剧情阶段
+   */
+  public jumpToTheaterStage(stage: number): DayTheaterStatus {
+    this.stopTheaterTimer();
+    this.theaterRunning = false;
+    const clamped = Math.max(1, Math.min(5, Math.round(stage)));
+    this.executeTheaterStage(clamped);
+    return this.getDayTheaterStatus();
+  }
+
   private ensureTheaterDevicesAndRulesReady(): void {
     for (let i = 0; i < this.devices.length; i++) {
       this.devices[i].setOnline(true);
@@ -1116,7 +1146,10 @@ export class SmartHomeStore {
   }
 
   private recordLiveSnapshot(timeLabel: string): void {
-    const snap = SimulationEngine.captureSnapshot(this.devices, timeLabel);
+    const shortLabel = timeLabel.length === 8 && timeLabel.charAt(2) === ':' && timeLabel.charAt(5) === ':'
+      ? timeLabel.substring(0, 5)
+      : timeLabel;
+    const snap = SimulationEngine.captureSnapshot(this.devices, shortLabel);
     this.simConfig.snapshots = SimulationEngine.appendSnapshot(this.simConfig.snapshots, snap);
   }
 
