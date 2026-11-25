@@ -335,6 +335,42 @@ export class DefaultDataFactory {
         triggerCount: 0
       },
       {
+        id: 'rule_smoke_clear_reset',
+        name: '烟雾消散自动解除警报',
+        description: '当烟雾浓度降至 <= 35ppm 时，自动关闭声光报警器并将净化器恢复静音运行（状态幂等保护）',
+        enabled: true,
+        priority: RulePriority.HIGH,
+        onlyWhenChanged: true,
+        logic: LogicOperator.AND,
+        conditions: [
+          {
+            id: 'cond_smoke_lte_35',
+            deviceId: 'sensor_balcony_smoke',
+            metricKey: MetricKey.SMOKE_LEVEL,
+            operator: ConditionOperator.LTE,
+            threshold: 35
+          }
+        ],
+        actions: [
+          {
+            id: 'act_siren_clear',
+            deviceId: 'act_balcony_siren',
+            targetPowerOn: false,
+            targetMode: '待机警戒'
+          },
+          {
+            id: 'act_purifier_calm',
+            deviceId: 'act_bedroom_purifier',
+            targetPowerOn: true,
+            targetLevel: 50,
+            targetMode: '静音除味'
+          }
+        ],
+        cooldownMs: 3000,
+        lastTriggeredAt: 0,
+        triggerCount: 0
+      },
+      {
         id: 'rule_cool_eco_save',
         name: '凉爽时段节能待机',
         description: '当客厅温度 <= 22℃ 时自动关闭客厅空调进入节能模式',

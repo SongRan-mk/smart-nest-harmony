@@ -239,6 +239,18 @@ export class RuleEngine {
       };
     }
 
+    // 状态变更幂等保护：恢复类规则若目标设备已处于目标状态则安静跳过，避免重复刷屏
+    if (rule.onlyWhenChanged && !RuleEngine.hasEffectiveStateChange(rule.actions, devices)) {
+      return {
+        ruleId: rule.id,
+        ruleName: rule.name,
+        triggered: false,
+        skippedReason: '目标设备已处于安全目标状态，无需重复执行',
+        conditionResults: conditionResults,
+        actionResults: []
+      };
+    }
+
     const actionResults = RuleEngine.executeActions(rule.actions, devices, lockedDeviceOwners, rule.name);
     let hasSuccess = false;
     let hasConflictOnly = false;
@@ -458,6 +470,24 @@ export class RuleEngine {
       results: results,
       generatedLogs: generatedLogs
     };
+  }
+
+  private static hasEffectiveStateChange(actions: RuleAction[], devices: BaseDevice[]): boolean {
+    for (let i = 0; i < actions.length; i++) {
+      const act = actions[i];
+      const dev = RuleEngine.findDeviceById(devices, act.deviceId);
+      if (dev instanceof ActuatorDevice && dev.online) {
+        if (dev.powerOn !== act.targetPowerOn) {
+          return true;
+        }
+        if (act.targetPowerOn && act.targetLevel !== undefined && !Number.isNaN(act.targetLevel)) {
+          if (Math.abs(dev.levelValue - act.targetLevel) >= 1) {
+            return true;
+          }
+        }
+      }
+    }
+    return false;
   }
 
   private static findDeviceById(devices: BaseDevice[], id: string): BaseDevice | undefined {

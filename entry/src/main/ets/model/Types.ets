@@ -105,6 +105,7 @@ export interface AutomationRule {
   description: string;
   enabled: boolean;
   priority?: RulePriority;
+  onlyWhenChanged?: boolean;
   logic: LogicOperator;
   conditions: RuleCondition[];
   actions: RuleAction[];

@@ -361,5 +361,40 @@ export default function ruleEngineTest() {
       store.dismissAllAlerts();
       expect(siren.powerOn).assertFalse();
     });
+
+    // 14. 闭环自愈用例：24h 仿真遇到 21:00 三红告警时暂缓结束，自动物理降温排烟并由恢复规则关闭警报后圆满结束
+    it('normal_day_theater_holds_until_alerts_cleared', 0, () => {
+      const store = SmartHomeStore.getInstance();
+      store.jumpToTheaterStage(5);
+
+      const temp = store.getDeviceById('sensor_living_temp') as SensorDevice;
+      const smoke = store.getDeviceById('sensor_balcony_smoke') as SensorDevice;
+      const siren = store.getDeviceById('act_balcony_siren') as ActuatorDevice;
+
+      // 初始进入 21:00：存在三项告警（高温+烟雾+鸣笛）
+      expect(store.hasPendingTheaterAnomaly()).assertTrue();
+      expect(siren.powerOn).assertTrue();
+
+      // 第 1 次自动步进：必须停留在第 5 幕(21:00)消警，且温度和烟雾真实下降
+      const t1 = store.tickDayTheaterAuto();
+      expect(t1.stageIndex).assertEqual(5);
+      expect(t1.completed).assertFalse();
+      expect(temp.value < 30.8).assertTrue();
+      expect(smoke.value < 188).assertTrue();
+
+      // 继续步进直到异常全部消除并自动完成 24h 仿真
+      let guard = 0;
+      let status = t1;
+      while (!status.completed && guard < 10) {
+        status = store.tickDayTheaterAuto();
+        guard += 1;
+      }
+
+      expect(status.completed).assertTrue();
+      expect(store.getActiveAlertCount()).assertEqual(0);
+      expect(temp.value < 28.0).assertTrue();
+      expect(smoke.value <= 35).assertTrue();
+      expect(siren.powerOn).assertFalse();
+    });
   });
 }

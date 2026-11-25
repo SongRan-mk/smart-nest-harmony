@@ -30,6 +30,8 @@ export struct DashboardView {
   @State activeSceneId: string = '';
   @State homeOccupied: boolean = true;
   @State theaterRunning: boolean = false;
+  @State theaterCompleted: boolean = false;
+  @State theaterMitigating: boolean = false;
   @State theaterStage: number = 0;
   @State butlerHeadline: string = '智巢管家 · 待命守卫中';
   @State butlerNarration: string = '';
@@ -61,6 +63,8 @@ export struct DashboardView {
     this.homeOccupied = this.store.isHomeOccupied();
     const tStatus = this.store.getDayTheaterStatus();
     this.theaterRunning = tStatus.running;
+    this.theaterCompleted = tStatus.completed;
+    this.theaterMitigating = tStatus.mitigating;
     this.theaterStage = tStatus.stageIndex;
     this.butlerHeadline = tStatus.butlerHeadline;
     this.butlerNarration = tStatus.butlerNarration;
@@ -201,18 +205,45 @@ export struct DashboardView {
         Column({ space: 10 }) {
           Row({ space: 8 }) {
             Column({ space: 2 }) {
-              Text('24h 智巢一天沉浸剧场')
-                .fontSize(15)
-                .fontWeight(FontWeight.Bold)
-                .fontColor('#1A2233')
-              Text('点击任意一幕或自动演播 · 真实驱动规则引擎')
+              Row({ space: 6 }) {
+                Text('24h 智巢一天沉浸剧场')
+                  .fontSize(15)
+                  .fontWeight(FontWeight.Bold)
+                  .fontColor('#1A2233')
+                if (this.theaterMitigating) {
+                  Text('消警等待中')
+                    .fontSize(10)
+                    .fontWeight(FontWeight.Bold)
+                    .fontColor('#FFFFFF')
+                    .backgroundColor('#FF4D4F')
+                    .padding({ left: 6, right: 6, top: 2, bottom: 2 })
+                    .borderRadius(8)
+                } else if (this.theaterRunning) {
+                  Text('演播中')
+                    .fontSize(10)
+                    .fontWeight(FontWeight.Bold)
+                    .fontColor('#FFFFFF')
+                    .backgroundColor('#722ED1')
+                    .padding({ left: 6, right: 6, top: 2, bottom: 2 })
+                    .borderRadius(8)
+                } else if (this.theaterCompleted) {
+                  Text('已完成')
+                    .fontSize(10)
+                    .fontWeight(FontWeight.Bold)
+                    .fontColor('#FFFFFF')
+                    .backgroundColor('#00B578')
+                    .padding({ left: 6, right: 6, top: 2, bottom: 2 })
+                    .borderRadius(8)
+                }
+              }
+              Text('异常未消除前自动暂缓推进，闭环自愈后结束')
                 .fontSize(11)
                 .fontColor('#6E7787')
             }
             .alignItems(HorizontalAlign.Start)
             .layoutWeight(1)
 
-            Button(this.theaterRunning ? '暂停演播' : '▶ 体验智巢一天')
+            Button(this.theaterRunning ? '暂停演播' : (this.theaterCompleted ? '▶ 重新演播' : '▶ 体验智巢一天'))
               .type(ButtonType.Capsule)
               .height(32)
               .fontSize(12)
@@ -225,7 +256,7 @@ export struct DashboardView {
                   this.showTip('已暂停智巢剧场演播');
                 } else {
                   this.store.startDayTheater();
-                  this.showTip('开启 24h 智巢一天沉浸演播');
+                  this.showTip('开启 24h 智巢一天闭环演播');
                 }
               })
 
@@ -271,7 +302,9 @@ export struct DashboardView {
             Text(this.butlerHeadline)
               .fontSize(12)
               .fontWeight(FontWeight.Bold)
-              .fontColor(this.theaterStage === 5 ? '#CF1322' : '#531DAB')
+              .fontColor(this.theaterCompleted
+                ? '#00875A'
+                : ((this.theaterMitigating || this.alertCount > 0) ? '#CF1322' : '#531DAB'))
             Text(this.butlerNarration)
               .fontSize(12)
               .lineHeight(18)
@@ -280,9 +313,16 @@ export struct DashboardView {
           .width('100%')
           .padding(10)
           .alignItems(HorizontalAlign.Start)
-          .backgroundColor(this.theaterStage === 5 ? '#FFF1F0' : '#F9F0FF')
+          .backgroundColor(this.theaterCompleted
+            ? '#F6FFED'
+            : ((this.theaterMitigating || this.alertCount > 0) ? '#FFF1F0' : '#F9F0FF'))
           .borderRadius(12)
-          .border({ width: 1, color: this.theaterStage === 5 ? '#FFA39E' : '#EFDBFF' })
+          .border({
+            width: 1,
+            color: this.theaterCompleted
+              ? '#B7EB8F'
+              : ((this.theaterMitigating || this.alertCount > 0) ? '#FFA39E' : '#EFDBFF')
+          })
         }
         .width('100%')
         .padding(14)

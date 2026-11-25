@@ -46,6 +46,8 @@ export interface MockDiagReport {
 
 export interface DayTheaterStatus {
   running: boolean;
+  completed: boolean;
+  mitigating: boolean;
   stageIndex: number;
   totalStages: number;
   stageTag: string;
@@ -80,6 +82,8 @@ export class SmartHomeStore {
 
   private theaterTimerId: number = -1;
   private theaterRunning: boolean = false;
+  private theaterCompleted: boolean = false;
+  private theaterMitigating: boolean = false;
   private theaterStage: number = 0;
   private theaterClockOverride: string = '';
   private butlerHeadline: string = '智巢管家 · 待命守卫中';
@@ -159,6 +163,22 @@ export class SmartHomeStore {
           }
           if (saved.rules[i].priority === undefined) {
             saved.rules[i].priority = RulePriority.NORMAL;
+          }
+        }
+      }
+      // 自动为旧缓存补入内置自愈恢复规则 rule_smoke_clear_reset
+      let hasClearRule = false;
+      for (let i = 0; i < saved.rules.length; i++) {
+        if (saved.rules[i].id === 'rule_smoke_clear_reset') {
+          hasClearRule = true;
+          break;
+        }
+      }
+      if (!hasClearRule) {
+        for (let k = 0; k < defaultRules.length; k++) {
+          if (defaultRules[k].id === 'rule_smoke_clear_reset') {
+            saved.rules.push(defaultRules[k]);
+            break;
           }
         }
       }
@@ -323,10 +343,12 @@ export class SmartHomeStore {
   }
 
   public getDayTheaterStatus(): DayTheaterStatus {
-    const tags: string[] = ['待命', '08:00 唤醒', '10:00 离家', '14:00 热浪', '19:00 归家', '21:00 仲裁'];
+    const tags: string[] = ['待命', '08:00 唤醒', '10:00 离家', '14:00 热浪', '19:00 归家', '21:00 仲裁', '22:00 完成'];
     const idx = (this.theaterStage >= 0 && this.theaterStage < tags.length) ? this.theaterStage : 0;
     return {
       running: this.theaterRunning,
+      completed: this.theaterCompleted,
+      mitigating: this.theaterMitigating,
       stageIndex: this.theaterStage,
       totalStages: 5,
       stageTag: tags[idx],
@@ -716,7 +738,8 @@ export class SmartHomeStore {
   }
 
   /**
-   * 启动“24h 智巢一天沉浸剧场”自动演播（每 3.2 秒推进一幕，真实驱动规则引擎与物理状态）
+   * 启动“24h 智巢一天沉浸剧场”自动演播
+   * 核心闭环逻辑：若当前时段存在高温/烟雾/鸣笛告警，暂缓进入下一时段，持续物理降温排烟并由恢复规则自动消警后才继续推进！
    */
   public startDayTheater(): DayTheaterStatus {
     this.stopTimerLoop();
@@ -724,18 +747,113 @@ export class SmartHomeStore {
     this.stopTheaterTimer();
 
     this.theaterStage = 0;
+    this.theaterCompleted = false;
+    this.theaterMitigating = false;
     this.theaterRunning = true;
     this.executeTheaterStage(1);
 
     this.theaterTimerId = setInterval(() => {
-      if (this.theaterStage < 5) {
-        this.executeTheaterStage(this.theaterStage + 1);
-      } else {
-        this.stopDayTheater();
-      }
-    }, 3200);
+      this.tickDayTheaterAuto();
+    }, 2400);
 
     return this.getDayTheaterStatus();
+  }
+
+  /**
+   * 单次自动推进时钟：异常未消除前保持在当前时段执行物理消警，全部恢复安全后再进入下一时段直至圆满结束
+   */
+  public tickDayTheaterAuto(): DayTheaterStatus {
+    if (this.hasPendingTheaterAnomaly()) {
+      this.runTheaterAlertMitigation();
+      return this.getDayTheaterStatus();
+    }
+
+    this.theaterMitigating = false;
+    if (this.theaterStage < 5) {
+      this.executeTheaterStage(this.theaterStage + 1);
+    } else {
+      this.finishDayTheater();
+    }
+    return this.getDayTheaterStatus();
+  }
+
+  /**
+   * 判定当前是否仍存在未消除的异常状态（高温红标 >= 28℃、烟雾 > 35ppm、或声光报警仍处于鸣笛态）
+   */
+  public hasPendingTheaterAnomaly(): boolean {
+    if (this.getActiveAlertCount() > 0) {
+      return true;
+    }
+    const temp = this.getDeviceById('sensor_living_temp');
+    if (temp instanceof SensorDevice && temp.online && temp.value >= 28.0) {
+      return true;
+    }
+    const smoke = this.getDeviceById('sensor_balcony_smoke');
+    if (smoke instanceof SensorDevice && smoke.online && smoke.value > 35) {
+      return true;
+    }
+    return false;
+  }
+
+  /**
+   * 执行物理消警步进：空调持续制冷降温 + 净化器与全开窗帘持续排烟，并触发规则引擎自动解除警报
+   */
+  private runTheaterAlertMitigation(): void {
+    this.theaterMitigating = true;
+    const temp = this.getDeviceById('sensor_living_temp') as SensorDevice | undefined;
+    const smoke = this.getDeviceById('sensor_balcony_smoke') as SensorDevice | undefined;
+    const ac = this.getDeviceById('act_living_ac') as ActuatorDevice | undefined;
+    const purifier = this.getDeviceById('act_bedroom_purifier') as ActuatorDevice | undefined;
+    const curtain = this.getDeviceById('act_living_curtain') as ActuatorDevice | undefined;
+
+    if (temp && temp.online && temp.value >= 28.0) {
+      const targetTemp = (ac && ac.online && ac.powerOn) ? ac.levelValue : 25.0;
+      const drop = (ac && ac.online && ac.powerOn) ? 2.6 : 1.0;
+      temp.updateReading(Math.max(targetTemp + 1.8, temp.value - drop));
+    }
+
+    if (smoke && smoke.online && smoke.value > 25) {
+      const boost = (purifier && purifier.online && purifier.powerOn ? Math.round(purifier.levelValue * 0.6) : 20)
+        + (curtain && curtain.online && curtain.powerOn && curtain.levelValue >= 80 ? 22 : 0);
+      smoke.updateReading(Math.max(22, smoke.value - Math.max(45, boost)));
+    }
+
+    const summary = RuleEngine.runCycle(this.rules, this.devices, Date.now(), true);
+    this.ingestCycleLogs(summary);
+    this.recordLiveSnapshot(this.getCurrentVirtualTimeText());
+
+    const curTemp = temp ? temp.value : 25.5;
+    const curSmoke = smoke ? smoke.value : 18;
+    const stillPending = this.hasPendingTheaterAnomaly();
+
+    if (stillPending) {
+      this.butlerHeadline = `🛡️ ${this.getCurrentVirtualTimeText()} 异常处置中（暂缓下一时段）`;
+      this.butlerNarration = `联动设备持续作业：客厅温度已降至 ${curTemp}℃、烟雾已降至 ${curSmoke}ppm（剩余 ${this.getActiveAlertCount()} 项红警），待全部消除后继续推进…`;
+    } else {
+      this.theaterMitigating = false;
+      this.butlerHeadline = `✅ ${this.getCurrentVirtualTimeText()} 异常已全部闭环消除！`;
+      this.butlerNarration = `温度回落至 ${curTemp}℃、烟雾降至 ${curSmoke}ppm，自愈恢复规则已自动关闭警报并恢复静音，即将进入下一时段！`;
+      this.appendLog(LogSource.RULE, `闭环消警完成 · ${this.getCurrentVirtualTimeText()}`, this.butlerNarration);
+    }
+
+    this.notifyChanged();
+    this.persistAsync();
+  }
+
+  private finishDayTheater(): void {
+    this.stopTheaterTimer();
+    this.theaterRunning = false;
+    this.theaterMitigating = false;
+    this.theaterCompleted = true;
+    this.theaterStage = 6;
+    this.theaterClockOverride = '22:00';
+    this.activeSceneId = 'scene_reset';
+    this.butlerHeadline = '✅ 24h 仿真已圆满完成 · 22:00 安心夜守';
+    this.butlerNarration = '今日 5 幕场景与全部高温/烟雾告警均已通过规则引擎与物理联动闭环消除，仿真正常结束！';
+    this.appendLog(LogSource.SIMULATION, '24h 智巢一天仿真圆满结束', this.butlerNarration);
+    this.recordLiveSnapshot('22:00');
+    this.notifyChanged();
+    this.persistAsync();
   }
 
   /**
@@ -744,6 +862,7 @@ export class SmartHomeStore {
   public stopDayTheater(): DayTheaterStatus {
     this.stopTheaterTimer();
     this.theaterRunning = false;
+    this.theaterMitigating = false;
     this.notifyChanged();
     return this.getDayTheaterStatus();
   }
@@ -754,6 +873,8 @@ export class SmartHomeStore {
   public stepDayTheaterNext(): DayTheaterStatus {
     this.stopTheaterTimer();
     this.theaterRunning = false;
+    this.theaterCompleted = false;
+    this.theaterMitigating = false;
     const nextStage = this.theaterStage >= 5 ? 1 : (this.theaterStage + 1);
     this.executeTheaterStage(nextStage);
     return this.getDayTheaterStatus();
@@ -765,6 +886,8 @@ export class SmartHomeStore {
   public jumpToTheaterStage(stage: number): DayTheaterStatus {
     this.stopTheaterTimer();
     this.theaterRunning = false;
+    this.theaterCompleted = false;
+    this.theaterMitigating = false;
     const clamped = Math.max(1, Math.min(5, Math.round(stage)));
     this.executeTheaterStage(clamped);
     return this.getDayTheaterStatus();
@@ -774,7 +897,12 @@ export class SmartHomeStore {
     for (let i = 0; i < this.devices.length; i++) {
       this.devices[i].setOnline(true);
     }
-    const coreRuleIds: string[] = ['rule_high_temp_ac', 'rule_dark_motion_light', 'rule_smoke_emergency'];
+    const coreRuleIds: string[] = [
+      'rule_high_temp_ac',
+      'rule_dark_motion_light',
+      'rule_smoke_emergency',
+      'rule_smoke_clear_reset'
+    ];
     for (let i = 0; i < this.rules.length; i++) {
       for (let j = 0; j < coreRuleIds.length; j++) {
         if (this.rules[i].id === coreRuleIds[j]) {
@@ -883,11 +1011,9 @@ export class SmartHomeStore {
       const summary = RuleEngine.runCycle(this.rules, this.devices, Date.now(), true);
       this.ingestCycleLogs(summary);
       this.butlerHeadline = '第 5/5 幕 · 21:00 并发险情与优先级仲裁';
-      this.butlerNarration = `阳台烟雾骤升至 188ppm 与高温并发！紧急规则优先拉响警报并锁定窗帘 100% 排烟，常规遮阳动作自动避让(${summary.conflictSkippedCount}项仲裁)！`;
+      this.butlerNarration = `阳台烟雾骤升至 188ppm 与高温并发！紧急规则优先拉响警报并锁定窗帘 100% 排烟，常规遮阳动作自动避让(${summary.conflictSkippedCount}项仲裁)，正在持续消警中…`;
       this.appendLog(LogSource.SIMULATION, '智巢剧场 · 21:00 险情仲裁', this.butlerNarration);
       this.recordLiveSnapshot('21:00');
-      this.stopTheaterTimer();
-      this.theaterRunning = false;
     }
 
     this.notifyChanged();
