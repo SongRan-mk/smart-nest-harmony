@@ -667,6 +667,9 @@ export class SmartHomeStore {
   public toggleAutoSimulation(): boolean {
     this.simConfig.autoRunning = !this.simConfig.autoRunning;
     if (this.simConfig.autoRunning) {
+      this.stopTheaterTimer();
+      this.theaterRunning = false;
+      this.theaterClockOverride = '';
       this.startTimerLoop();
       this.appendLog(LogSource.SIMULATION, '开启自动环境仿真', '每 3 秒自动推进昼夜温湿度变化并评估联动规则');
     } else {
@@ -679,6 +682,8 @@ export class SmartHomeStore {
   }
 
   public stepSimulationOnce(): EngineCycleSummary {
+    this.stopTheaterTimer();
+    this.theaterRunning = false;
     this.theaterClockOverride = '';
     this.simConfig.tickIndex += 1;
     const stepRes = SimulationEngine.stepEnvironment(this.devices, this.simConfig.tickIndex);
