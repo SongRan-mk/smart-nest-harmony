@@ -400,6 +400,10 @@ export default function ruleEngineTest() {
     // 15. 正常节能逻辑用例：离家无人时遇高温不误开空调，切换有人后立即开启制冷
     it('normal_away_heatwave_no_ac_waste', 0, () => {
       const store = SmartHomeStore.getInstance();
+      const heatRule = store.getRuleById('rule_high_temp_ac');
+      if (heatRule) {
+        heatRule.lastTriggeredAt = 0;
+      }
       store.applyScene('scene_away');
       const ac = store.getDeviceById('act_living_ac') as ActuatorDevice;
       expect(store.isHomeOccupied()).assertFalse();
