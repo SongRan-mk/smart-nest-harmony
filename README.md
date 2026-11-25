@@ -84,9 +84,8 @@ entry/src/
 | ![看板](docs/screenshots/dashboard.jpeg) | ![规则](docs/screenshots/rules.jpeg) | ![仿真](docs/screenshots/simulation.jpeg) | ![自检](docs/screenshots/mock_diag.jpeg) | ![日志](docs/screenshots/logs.jpeg) |
 
 ### 4.2 实际运行录屏
-> 录屏文件建议放置于 `docs/demo/smart-nest-demo.mp4`（或发布至 GitHub Release / README 视频拖拽上传后替换下方链接）：
-
-- [点击查看应用实际运行录屏（需在本地或仓库补充上传后生效）](docs/demo/smart-nest-demo.mp4)
+- [点击查看 88 秒应用实际运行演示录屏 (`docs/demo/smart-nest-demo.mp4`)](docs/demo/smart-nest-demo.mp4)
+  > 录屏完整展示：24h 智巢一天 5 幕闭环演播（含 14:00 降温消警与 21:00 并发烟雾优先级冲突仲裁及自动自愈解除）→ 情景模式与在位切换 → 5 条自动化规则 → 5 指标 Canvas 趋势图与 `5/5 PASS` Mock 自检 → 联动日志 → 彻底关闭重启后本地持久化恢复。
 
 ---
 
