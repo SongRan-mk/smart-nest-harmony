@@ -44,6 +44,15 @@ export interface MockDiagReport {
   items: MockDiagItem[];
 }
 
+export interface DayTheaterStatus {
+  running: boolean;
+  stageIndex: number;
+  totalStages: number;
+  stageTag: string;
+  butlerHeadline: string;
+  butlerNarration: string;
+}
+
 export const STORE_REVISION_KEY: string = 'storeRevision';
 
 /**
@@ -68,6 +77,13 @@ export class SmartHomeStore {
   private restoredFromDisk: boolean = false;
   private revision: number = 0;
   private simTimerId: number = -1;
+
+  private theaterTimerId: number = -1;
+  private theaterRunning: boolean = false;
+  private theaterStage: number = 0;
+  private theaterClockOverride: string = '';
+  private butlerHeadline: string = '智巢管家 · 待命守卫中';
+  private butlerNarration: string = '点击下方“体验智巢一天”，可沉浸式观看清晨唤醒、离家布防、午后热浪、夜幕迎宾与险情仲裁全过程。';
 
   private constructor() {
     this.devices = DefaultDataFactory.createDefaultDevices();
@@ -280,8 +296,24 @@ export class SmartHomeStore {
   }
 
   public getCurrentVirtualTimeText(): string {
+    if (this.theaterClockOverride.length > 0) {
+      return this.theaterClockOverride;
+    }
     const virtualHour = (8 + Math.max(0, this.simConfig.tickIndex - 1) * 2) % 24;
     return `${virtualHour.toString().padStart(2, '0')}:00`;
+  }
+
+  public getDayTheaterStatus(): DayTheaterStatus {
+    const tags: string[] = ['待命', '08:00 唤醒', '10:00 离家', '14:00 热浪', '19:00 归家', '21:00 仲裁'];
+    const idx = (this.theaterStage >= 0 && this.theaterStage < tags.length) ? this.theaterStage : 0;
+    return {
+      running: this.theaterRunning,
+      stageIndex: this.theaterStage,
+      totalStages: 5,
+      stageTag: tags[idx],
+      butlerHeadline: this.butlerHeadline,
+      butlerNarration: this.butlerNarration
+    };
   }
 
   public isHomeOccupied(): boolean {
@@ -382,6 +414,10 @@ export class SmartHomeStore {
       purifier.setMode('静音除味');
     }
     this.activeSceneId = 'scene_reset';
+    if (this.theaterStage === 5) {
+      this.butlerHeadline = '智巢管家 · 全屋险情已圆满解除';
+      this.butlerNarration = '声光报警已关闭，烟雾与室温恢复安全区间，智巢一天沉浸式演播圆满结束！';
+    }
     this.appendLog(LogSource.SCENE, '应急解除告警', '已关闭声光报警器并将异常环境数值恢复至安全区间');
     this.recordLiveSnapshot(formatTimestamp(Date.now()));
     this.notifyChanged();
@@ -643,6 +679,7 @@ export class SmartHomeStore {
   }
 
   public stepSimulationOnce(): EngineCycleSummary {
+    this.theaterClockOverride = '';
     this.simConfig.tickIndex += 1;
     const stepRes = SimulationEngine.stepEnvironment(this.devices, this.simConfig.tickIndex);
     this.simConfig.snapshots = SimulationEngine.appendSnapshot(this.simConfig.snapshots, stepRes.snapshot);
@@ -654,6 +691,174 @@ export class SmartHomeStore {
     return summary;
   }
 
+  /**
+   * 启动“24h 智巢一天沉浸剧场”自动演播（每 3.2 秒推进一幕，真实驱动规则引擎与物理状态）
+   */
+  public startDayTheater(): DayTheaterStatus {
+    this.stopTimerLoop();
+    this.simConfig.autoRunning = false;
+    this.stopTheaterTimer();
+
+    this.theaterStage = 0;
+    this.theaterRunning = true;
+    this.executeTheaterStage(1);
+
+    this.theaterTimerId = setInterval(() => {
+      if (this.theaterStage < 5) {
+        this.executeTheaterStage(this.theaterStage + 1);
+      } else {
+        this.stopDayTheater();
+      }
+    }, 3200);
+
+    return this.getDayTheaterStatus();
+  }
+
+  /**
+   * 暂停/停止沉浸剧场自动演播
+   */
+  public stopDayTheater(): DayTheaterStatus {
+    this.stopTheaterTimer();
+    this.theaterRunning = false;
+    this.notifyChanged();
+    return this.getDayTheaterStatus();
+  }
+
+  /**
+   * 手动单幕推进“智巢一天剧场”（支持逐幕讲解演示）
+   */
+  public stepDayTheaterNext(): DayTheaterStatus {
+    this.stopTheaterTimer();
+    this.theaterRunning = false;
+    const nextStage = this.theaterStage >= 5 ? 1 : (this.theaterStage + 1);
+    this.executeTheaterStage(nextStage);
+    return this.getDayTheaterStatus();
+  }
+
+  private ensureTheaterDevicesAndRulesReady(): void {
+    for (let i = 0; i < this.devices.length; i++) {
+      this.devices[i].setOnline(true);
+    }
+    const coreRuleIds: string[] = ['rule_high_temp_ac', 'rule_dark_motion_light', 'rule_smoke_emergency'];
+    for (let i = 0; i < this.rules.length; i++) {
+      for (let j = 0; j < coreRuleIds.length; j++) {
+        if (this.rules[i].id === coreRuleIds[j]) {
+          this.rules[i].enabled = true;
+        }
+      }
+    }
+  }
+
+  private executeTheaterStage(stage: number): void {
+    this.ensureTheaterDevicesAndRulesReady();
+    this.theaterStage = stage;
+
+    const temp = this.getDeviceById('sensor_living_temp') as SensorDevice | undefined;
+    const humi = this.getDeviceById('sensor_living_humi') as SensorDevice | undefined;
+    const light = this.getDeviceById('sensor_living_light') as SensorDevice | undefined;
+    const motion = this.getDeviceById('sensor_bedroom_motion') as SensorDevice | undefined;
+    const smoke = this.getDeviceById('sensor_balcony_smoke') as SensorDevice | undefined;
+
+    const ac = this.getDeviceById('act_living_ac') as ActuatorDevice | undefined;
+    const livingLight = this.getDeviceById('act_living_light') as ActuatorDevice | undefined;
+    const curtain = this.getDeviceById('act_living_curtain') as ActuatorDevice | undefined;
+    const bedLight = this.getDeviceById('act_bedroom_light') as ActuatorDevice | undefined;
+    const purifier = this.getDeviceById('act_bedroom_purifier') as ActuatorDevice | undefined;
+    const studyLamp = this.getDeviceById('act_study_lamp') as ActuatorDevice | undefined;
+    const lock = this.getDeviceById('act_entry_lock') as ActuatorDevice | undefined;
+    const siren = this.getDeviceById('act_balcony_siren') as ActuatorDevice | undefined;
+
+    if (stage === 1) {
+      this.theaterClockOverride = '08:00';
+      this.activeSceneId = 'scene_home';
+      if (temp) { temp.updateReading(24.2); }
+      if (humi) { humi.updateReading(56); }
+      if (light) { light.updateReading(460); }
+      if (smoke) { smoke.updateReading(16); }
+      if (motion) { motion.updateReading(1); }
+
+      if (curtain) { curtain.setPower(true); curtain.setLevel(85); curtain.setMode('晨光采光'); }
+      if (livingLight) { livingLight.setPower(false); }
+      if (bedLight) { bedLight.setPower(false); }
+      if (studyLamp) { studyLamp.setPower(false); }
+      if (ac) { ac.setPower(false); }
+      if (purifier) { purifier.setPower(true); purifier.setLevel(50); purifier.setMode('清晨换气'); }
+      if (siren) { siren.setPower(false); }
+      if (lock) { lock.setPower(true); }
+
+      const summary = RuleEngine.runCycle(this.rules, this.devices, Date.now(), true);
+      this.ingestCycleLogs(summary);
+      this.butlerHeadline = '第 1/5 幕 · 08:00 清晨阳光唤醒';
+      this.butlerNarration = '晨光充沛(460lux)，电动窗帘拉开至 85% 自然采光，关闭夜间照明，全屋进入清晨低功耗舒适态。';
+      this.appendLog(LogSource.SCENE, '智巢剧场 · 08:00 清晨唤醒', this.butlerNarration);
+      this.recordLiveSnapshot('08:00');
+    } else if (stage === 2) {
+      this.theaterClockOverride = '10:00';
+      this.activeSceneId = 'scene_away';
+      if (motion) { motion.updateReading(0); }
+      if (light) { light.updateReading(115); }
+      if (temp) { temp.updateReading(26.0); }
+      if (livingLight) { livingLight.setPower(false); }
+      if (bedLight) { bedLight.setPower(false); }
+      if (studyLamp) { studyLamp.setPower(false); }
+      if (ac) { ac.setPower(false); }
+      if (curtain) { curtain.setPower(true); curtain.setLevel(40); curtain.setMode('半掩布防'); }
+      if (lock) { lock.setPower(true); }
+      if (siren) { siren.setPower(false); }
+
+      const summary = RuleEngine.runCycle(this.rules, this.devices, Date.now(), true);
+      this.ingestCycleLogs(summary);
+      this.butlerHeadline = '第 2/5 幕 · 10:00 离家安防布控';
+      this.butlerNarration = '主人离家反锁门锁，红外同步为【无人】；虽遇阴云暗光(115lux)，AND 规则识别无人未误开照明！';
+      this.appendLog(LogSource.SCENE, '智巢剧场 · 10:00 离家布防', this.butlerNarration);
+      this.recordLiveSnapshot('10:00');
+    } else if (stage === 3) {
+      this.theaterClockOverride = '14:00';
+      this.activeSceneId = '';
+      if (temp) { temp.updateReading(31.6); }
+      if (humi) { humi.updateReading(46); }
+      if (light) { light.updateReading(680); }
+
+      const summary = RuleEngine.runCycle(this.rules, this.devices, Date.now(), true);
+      this.ingestCycleLogs(summary);
+      this.butlerHeadline = '第 3/5 幕 · 14:00 午后热浪联动';
+      this.butlerNarration = `午后室温飙升至 31.6℃，真实命中 ${summary.triggeredCount} 条规则：变频空调自动开启 24℃ 强力制冷，窗帘合拢至 30% 遮阳！`;
+      this.appendLog(LogSource.SIMULATION, '智巢剧场 · 14:00 午后热浪', this.butlerNarration);
+      this.recordLiveSnapshot('14:00');
+    } else if (stage === 4) {
+      this.theaterClockOverride = '19:00';
+      this.activeSceneId = 'scene_home';
+      if (temp) { temp.updateReading(25.6); }
+      if (ac) { ac.setPower(false); ac.setMode('舒适待机'); }
+      if (motion) { motion.updateReading(1); }
+      if (light) { light.updateReading(62); }
+
+      const summary = RuleEngine.runCycle(this.rules, this.devices, Date.now(), true);
+      this.ingestCycleLogs(summary);
+      this.butlerHeadline = '第 4/5 幕 · 19:00 归家夜幕迎宾';
+      this.butlerNarration = `主人归家【有人】且夜幕降临(62lux)，AND 双条件命中(${summary.triggeredCount}条)：客厅主灯 80% 与主卧暖光 45% 自动点亮！`;
+      this.appendLog(LogSource.SIMULATION, '智巢剧场 · 19:00 归家夜幕', this.butlerNarration);
+      this.recordLiveSnapshot('19:00');
+    } else {
+      this.theaterClockOverride = '21:00';
+      this.activeSceneId = '';
+      if (temp) { temp.updateReading(30.8); }
+      if (smoke) { smoke.updateReading(188); }
+
+      const summary = RuleEngine.runCycle(this.rules, this.devices, Date.now(), true);
+      this.ingestCycleLogs(summary);
+      this.butlerHeadline = '第 5/5 幕 · 21:00 并发险情与优先级仲裁';
+      this.butlerNarration = `阳台烟雾骤升至 188ppm 与高温并发！紧急规则优先拉响警报并锁定窗帘 100% 排烟，常规遮阳动作自动避让(${summary.conflictSkippedCount}项仲裁)！`;
+      this.appendLog(LogSource.SIMULATION, '智巢剧场 · 21:00 险情仲裁', this.butlerNarration);
+      this.recordLiveSnapshot('21:00');
+      this.stopTheaterTimer();
+      this.theaterRunning = false;
+    }
+
+    this.notifyChanged();
+    this.persistAsync();
+  }
+
   public clearLogs(): void {
     this.logs = [];
     this.appendLog(LogSource.MANUAL, '日志已清空', '历史记录已重置');
@@ -663,6 +868,12 @@ export class SmartHomeStore {
 
   public async resetToFactoryDefaults(): Promise<void> {
     this.stopTimerLoop();
+    this.stopTheaterTimer();
+    this.theaterRunning = false;
+    this.theaterStage = 0;
+    this.theaterClockOverride = '';
+    this.butlerHeadline = '智巢管家 · 待命守卫中';
+    this.butlerNarration = '点击下方“体验智巢一天”，可沉浸式观看清晨唤醒、离家布防、午后热浪、夜幕迎宾与险情仲裁全过程。';
     await this.persistence.clearAll();
     this.devices = DefaultDataFactory.createDefaultDevices();
     this.rules = DefaultDataFactory.createDefaultRules();
@@ -845,6 +1056,8 @@ export class SmartHomeStore {
 
   public stopSimulationTimer(): void {
     this.stopTimerLoop();
+    this.stopTheaterTimer();
+    this.theaterRunning = false;
   }
 
   /**
@@ -852,6 +1065,15 @@ export class SmartHomeStore {
    */
   public pauseSimulationForBackground(): void {
     this.stopTimerLoop();
+    this.stopTheaterTimer();
+    this.theaterRunning = false;
+  }
+
+  private stopTheaterTimer(): void {
+    if (this.theaterTimerId !== -1) {
+      clearInterval(this.theaterTimerId);
+      this.theaterTimerId = -1;
+    }
   }
 
   /**

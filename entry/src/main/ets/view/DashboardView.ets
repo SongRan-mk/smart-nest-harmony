@@ -5,6 +5,11 @@ import { DeviceDetailParam, ROUTE_DEVICE_DETAIL } from '../model/NavTypes';
 import { RoomId, RoomInfo, ScenePreset } from '../model/Types';
 import { SmartHomeStore, STORE_REVISION_KEY } from '../service/SmartHomeStore';
 
+interface TheaterStepChip {
+  idx: number;
+  label: string;
+}
+
 /**
  * 智居看板视图：全屋摘要、应急告警横幅、数字孪生沙盘、突发演练、一键场景与多房间设备网格
  */
@@ -24,9 +29,20 @@ export struct DashboardView {
   @State autoRunning: boolean = false;
   @State activeSceneId: string = '';
   @State homeOccupied: boolean = true;
+  @State theaterRunning: boolean = false;
+  @State theaterStage: number = 0;
+  @State butlerHeadline: string = '智巢管家 · 待命守卫中';
+  @State butlerNarration: string = '';
   @State filteredDevices: BaseDevice[] = [];
 
   private store: SmartHomeStore = SmartHomeStore.getInstance();
+  private theaterChips: TheaterStepChip[] = [
+    { idx: 1, label: '08:00 唤醒' },
+    { idx: 2, label: '10:00 离家' },
+    { idx: 3, label: '14:00 热浪' },
+    { idx: 4, label: '19:00 归家' },
+    { idx: 5, label: '21:00 仲裁' }
+  ];
 
   aboutToAppear(): void {
     this.syncFromStore();
@@ -43,6 +59,11 @@ export struct DashboardView {
     this.autoRunning = this.store.getSimConfig().autoRunning;
     this.activeSceneId = this.store.getActiveSceneId();
     this.homeOccupied = this.store.isHomeOccupied();
+    const tStatus = this.store.getDayTheaterStatus();
+    this.theaterRunning = tStatus.running;
+    this.theaterStage = tStatus.stageIndex;
+    this.butlerHeadline = tStatus.butlerHeadline;
+    this.butlerNarration = tStatus.butlerNarration;
     this.filteredDevices = this.store.getDevices(this.selectedRoom);
   }
 
@@ -205,6 +226,97 @@ export struct DashboardView {
           colors: [['#1677FF', 0.0], ['#2F54EB', 1.0]]
         })
         .shadow({ radius: 12, color: '#241677FF', offsetX: 0, offsetY: 4 })
+
+        // 2.2 24h 智巢一天沉浸式互动剧场 + 管家实时播报气泡
+        Column({ space: 10 }) {
+          Row({ space: 8 }) {
+            Column({ space: 2 }) {
+              Text('24h 智巢一天沉浸剧场')
+                .fontSize(15)
+                .fontWeight(FontWeight.Bold)
+                .fontColor('#1A2233')
+              Text('5 幕连续剧情 · 真实触发规则引擎与冲突仲裁')
+                .fontSize(11)
+                .fontColor('#6E7787')
+            }
+            .alignItems(HorizontalAlign.Start)
+            .layoutWeight(1)
+
+            Button(this.theaterRunning ? '暂停演播' : '▶ 体验智巢一天')
+              .type(ButtonType.Capsule)
+              .height(32)
+              .fontSize(12)
+              .fontWeight(FontWeight.Bold)
+              .backgroundColor(this.theaterRunning ? '#FA8C16' : '#722ED1')
+              .fontColor('#FFFFFF')
+              .onClick(() => {
+                if (this.theaterRunning) {
+                  this.store.stopDayTheater();
+                  this.showTip('已暂停智巢剧场演播');
+                } else {
+                  this.store.startDayTheater();
+                  this.showTip('开启 24h 智巢一天沉浸演播');
+                }
+              })
+
+            Button('下一幕 ›')
+              .type(ButtonType.Capsule)
+              .height(32)
+              .fontSize(12)
+              .backgroundColor('#F9F0FF')
+              .fontColor('#722ED1')
+              .onClick(() => {
+                const st = this.store.stepDayTheaterNext();
+                this.showTip(st.butlerHeadline);
+              })
+          }
+          .width('100%')
+
+          // 5 幕进度时间轴
+          Scroll() {
+            Row({ space: 6 }) {
+              ForEach(this.theaterChips, (chip: TheaterStepChip) => {
+                Text(chip.label)
+                  .fontSize(10)
+                  .fontWeight(this.theaterStage === chip.idx ? FontWeight.Bold : FontWeight.Normal)
+                  .fontColor(this.theaterStage === chip.idx
+                    ? '#FFFFFF'
+                    : (this.theaterStage > chip.idx ? '#00B578' : '#64748B'))
+                  .backgroundColor(this.theaterStage === chip.idx
+                    ? (chip.idx === 5 ? '#FF4D4F' : '#722ED1')
+                    : (this.theaterStage > chip.idx ? '#E6FFFB' : '#F2F4F8'))
+                  .padding({ left: 8, right: 8, top: 4, bottom: 4 })
+                  .borderRadius(10)
+              }, (chip: TheaterStepChip) => `${chip.idx}_${this.theaterStage}`)
+            }
+          }
+          .scrollable(ScrollDirection.Horizontal)
+          .scrollBar(BarState.Off)
+          .width('100%')
+
+          // 智巢管家实时解说气泡
+          Column({ space: 4 }) {
+            Text(this.butlerHeadline)
+              .fontSize(12)
+              .fontWeight(FontWeight.Bold)
+              .fontColor(this.theaterStage === 5 ? '#CF1322' : '#531DAB')
+            Text(this.butlerNarration)
+              .fontSize(12)
+              .lineHeight(18)
+              .fontColor('#333B48')
+          }
+          .width('100%')
+          .padding(10)
+          .alignItems(HorizontalAlign.Start)
+          .backgroundColor(this.theaterStage === 5 ? '#FFF1F0' : '#F9F0FF')
+          .borderRadius(12)
+          .border({ width: 1, color: this.theaterStage === 5 ? '#FFA39E' : '#EFDBFF' })
+        }
+        .width('100%')
+        .padding(14)
+        .backgroundColor('#FFFFFF')
+        .borderRadius(18)
+        .shadow({ radius: 8, color: '#0A000000', offsetX: 0, offsetY: 2 })
 
         // 2.5 全屋数字孪生交互沙盘
         HomeFloorPlan({

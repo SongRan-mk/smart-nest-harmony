@@ -317,5 +317,49 @@ export default function ruleEngineTest() {
       expect(sensor.getPrimaryValueText()).assertEqual('有人');
       expect(store.isHomeOccupied()).assertTrue();
     });
+
+    // 13. 正常用例：24h 智巢一天沉浸剧场 5 幕连续推进与引擎真实联动验证
+    it('normal_day_theater_five_stages_execution', 0, () => {
+      const store = SmartHomeStore.getInstance();
+      store.stopDayTheater();
+
+      // 第 1 幕：08:00 清晨唤醒
+      const s1 = store.stepDayTheaterNext();
+      expect(s1.stageIndex).assertEqual(1);
+      expect(store.getCurrentVirtualTimeText()).assertEqual('08:00');
+      expect(store.isHomeOccupied()).assertTrue();
+
+      // 第 2 幕：10:00 离家布防 -> 无人且未误开灯
+      const s2 = store.stepDayTheaterNext();
+      expect(s2.stageIndex).assertEqual(2);
+      expect(store.isHomeOccupied()).assertFalse();
+      const livingLight = store.getDeviceById('act_living_light') as ActuatorDevice;
+      expect(livingLight.powerOn).assertFalse();
+
+      // 第 3 幕：14:00 午后热浪 -> 触发空调 24℃ 与窗帘 30%
+      const s3 = store.stepDayTheaterNext();
+      expect(s3.stageIndex).assertEqual(3);
+      const ac = store.getDeviceById('act_living_ac') as ActuatorDevice;
+      const curtain = store.getDeviceById('act_living_curtain') as ActuatorDevice;
+      expect(ac.powerOn).assertTrue();
+      expect(ac.levelValue).assertEqual(24);
+      expect(curtain.levelValue).assertEqual(30);
+
+      // 第 4 幕：19:00 归家夜幕 -> 有人且暗光自动亮灯
+      const s4 = store.stepDayTheaterNext();
+      expect(s4.stageIndex).assertEqual(4);
+      expect(store.isHomeOccupied()).assertTrue();
+      expect(livingLight.powerOn).assertTrue();
+
+      // 第 5 幕：21:00 并发烟雾与高温 -> 紧急规则优先锁定窗帘 100% 通风并拉响警报
+      const s5 = store.stepDayTheaterNext();
+      expect(s5.stageIndex).assertEqual(5);
+      const siren = store.getDeviceById('act_balcony_siren') as ActuatorDevice;
+      expect(siren.powerOn).assertTrue();
+      expect(curtain.levelValue).assertEqual(100);
+
+      store.dismissAllAlerts();
+      expect(siren.powerOn).assertFalse();
+    });
   });
 }
